@@ -8,11 +8,20 @@
 import SwiftUI
 import SwiftData
 
+/// Main app entry point for ProgressionTracker
+/// Sets up SwiftData model container and initializes the exercise library
 @main
 struct ProgressionTrackerApp: App {
+    
+    /// Shared model container configured with all workout tracking models
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            WorkoutProgram.self,
+            WorkoutDay.self,
+            Exercise.self,
+            WorkoutSession.self,
+            ExerciseSet.self,
+            ExerciseLibraryItem.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +34,13 @@ struct ProgressionTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ProgramListView()
+                .task {
+                    // Initialize exercise library on first app launch
+                    // This populates the database with default exercises if they don't exist
+                    let context = sharedModelContainer.mainContext
+                    ExerciseLibraryService.populateDefaultExercises(modelContext: context)
+                }
         }
         .modelContainer(sharedModelContainer)
     }
