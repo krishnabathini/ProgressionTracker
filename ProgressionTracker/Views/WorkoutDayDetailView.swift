@@ -131,12 +131,11 @@ struct WorkoutDayDetailView: View {
     private var exerciseListView: some View {
         List {
             ForEach(workoutDay.exercises) { exercise in
-                Button {
-                    print("TODO: Navigate to ExerciseTrackingView for \(exercise.name)")
+                NavigationLink {
+                    ExerciseTrackingView(exercise: exercise)
                 } label: {
                     ExerciseRowView(exercise: exercise)
                 }
-                .buttonStyle(.plain)
                 .listRowBackground(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
