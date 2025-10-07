@@ -33,6 +33,14 @@ struct ProgramDetailView: View {
             .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
             .navigationTitle(program.name)
             .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
+            .onAppear {
+                // Force navigation bar to stay configured
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.windows.first?.overrideUserInterfaceStyle = .dark
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -90,16 +98,14 @@ struct ProgramDetailView: View {
                 VStack(spacing: 12) {
                     // "UP NEXT" label
                     Text("UP NEXT")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.secondary)
+                        .font(.system(.caption, design: .default, weight: .semibold))
+                        .foregroundColor(Color(white: 0.5))
                         .textCase(.uppercase)
                     
                     // Day name
                     Text(nextDay.name)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
+                        .font(.system(.title2, design: .default, weight: .bold))
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                     
                     // Action buttons
@@ -123,7 +129,7 @@ struct ProgramDetailView: View {
                             Text("Skip")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 12)
                                 .background(Color.clear)
@@ -147,7 +153,7 @@ struct ProgramDetailView: View {
     private var workoutDaysSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("All Workout Days")
-                .font(.headline)
+                .font(.system(.headline, design: .default, weight: .semibold))
                 .foregroundColor(.white)
                 .padding(.horizontal)
             
@@ -222,9 +228,8 @@ struct ProgramDetailView: View {
                     HStack {
                         // Day name
                         Text(day.name)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
+                            .font(.system(.body, design: .default, weight: .semibold))
+                            .foregroundColor(.white)
                         
                         Spacer()
                         
@@ -256,8 +261,8 @@ struct ProgramDetailView: View {
                     
                     // Number of exercises
                     Text(day.exercises.isEmpty ? "No exercises yet" : "\(day.exercises.count) exercises")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(.subheadline, design: .default))
+                        .foregroundColor(Color(white: 0.6))
                 }
                 
                 // Right chevron
@@ -270,8 +275,6 @@ struct ProgramDetailView: View {
             .cornerRadius(12)
         }
     }
-    
-    // MARK: - Computed Properties
     
     /// Returns workout days sorted by orderIndex
     private var sortedWorkoutDays: [WorkoutDay] {

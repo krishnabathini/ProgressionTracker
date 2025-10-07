@@ -15,7 +15,6 @@ struct WorkoutDayDetailView: View {
     @State private var customExerciseName = ""
     @State private var targetSets = 3
     @State private var targetReps = 8
-    @State private var exerciseType = ExerciseType.upperBody
     
     var body: some View {
         NavigationStack {
@@ -63,7 +62,6 @@ struct WorkoutDayDetailView: View {
                 exerciseName: customExerciseName.isEmpty ? selectedLibraryItem?.name ?? "" : customExerciseName,
                 targetSets: $targetSets,
                 targetReps: $targetReps,
-                exerciseType: $exerciseType,
                 onSave: {
                     addExercise()
                 },
@@ -202,12 +200,31 @@ struct WorkoutDayDetailView: View {
     
     // MARK: - Actions
     
+    /// Determines the exercise type based on the exercise name
+    /// - Parameter exerciseName: The name of the exercise
+    /// - Returns: The appropriate ExerciseType
+    private func determineExerciseType(for exerciseName: String) -> ExerciseType {
+        let lowercaseName = exerciseName.lowercased()
+        
+        // Check for lower body exercise keywords
+        if lowercaseName.contains("squat") || 
+           lowercaseName.contains("leg") || 
+           lowercaseName.contains("deadlift") || 
+           lowercaseName.contains("lunge") || 
+           lowercaseName.contains("calf") {
+            return .lowerBody
+        }
+        
+        // Default to upper body for most exercises
+        return .upperBody
+    }
+    
     /// Adds a new exercise to the workout day
     private func addExercise() {
         let exercise: Exercise
         
         if let libraryItem = selectedLibraryItem {
-            // Create exercise from library item
+            // Create exercise from library item - use library item's type
             exercise = Exercise(
                 day: workoutDay,
                 name: libraryItem.name,
@@ -217,13 +234,14 @@ struct WorkoutDayDetailView: View {
                 libraryItem: libraryItem
             )
         } else {
-            // Create custom exercise
+            // Create custom exercise - automatically determine type
+            let determinedType = determineExerciseType(for: customExerciseName)
             exercise = Exercise(
                 day: workoutDay,
                 name: customExerciseName,
                 targetSets: targetSets,
                 targetReps: targetReps,
-                exerciseType: exerciseType,
+                exerciseType: determinedType,
                 libraryItem: nil
             )
         }
@@ -248,7 +266,6 @@ struct WorkoutDayDetailView: View {
         customExerciseName = ""
         targetSets = 3
         targetReps = 8
-        exerciseType = .upperBody
     }
     
     /// Confirms deletion of an exercise
@@ -412,7 +429,6 @@ struct SetTargetView: View {
     let exerciseName: String
     @Binding var targetSets: Int
     @Binding var targetReps: Int
-    @Binding var exerciseType: ExerciseType
     
     let onSave: () -> Void
     let onCancel: () -> Void
@@ -455,19 +471,6 @@ struct SetTargetView: View {
                                 .font(.body)
                                 .foregroundColor(.secondary)
                         }
-                    }
-                    
-                    // Exercise type
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Exercise Type")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        Picker("Exercise Type", selection: $exerciseType) {
-                            Text("Upper Body").tag(ExerciseType.upperBody)
-                            Text("Lower Body").tag(ExerciseType.lowerBody)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
                     }
                 }
                 .padding()

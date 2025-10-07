@@ -17,7 +17,7 @@ struct ProgramTemplateSelectionView: View {
                     // Section 1: Pre-Made Programs
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Pre-Made Programs")
-                            .font(.headline)
+                            .font(.system(.headline, design: .default, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal)
                         
@@ -38,8 +38,8 @@ struct ProgramTemplateSelectionView: View {
                             .frame(height: 1)
                         
                         Text("or")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                            .font(.system(.caption, design: .default))
+                            .foregroundColor(Color(white: 0.5))
                             .padding(.horizontal, 16)
                         
                         Rectangle()
@@ -51,7 +51,7 @@ struct ProgramTemplateSelectionView: View {
                     // Section 3: Create Custom
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Create Custom")
-                            .font(.headline)
+                            .font(.system(.headline, design: .default, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal)
                         
@@ -64,8 +64,8 @@ struct ProgramTemplateSelectionView: View {
                                     .font(.title2)
                                 
                                 Text("Create Custom Program")
-                                    .font(.body)
-                                    .foregroundColor(.primary)
+                                    .font(.system(.body, design: .default, weight: .semibold))
+                                    .foregroundColor(.white)
                                 
                                 Spacer()
                                 
@@ -74,7 +74,7 @@ struct ProgramTemplateSelectionView: View {
                                     .font(.caption)
                             }
                             .padding()
-                            .background(Color(.systemGray6))
+                            .background(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
                             .cornerRadius(12)
                         }
                         .padding(.horizontal)
@@ -85,6 +85,8 @@ struct ProgramTemplateSelectionView: View {
             .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
             .navigationTitle("Choose Program")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.dark)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -166,22 +168,20 @@ struct TemplateRowView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Template name
                     Text(template.name)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
+                        .font(.system(.headline, design: .default, weight: .semibold))
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
                     
                     // Template description
                     Text(template.description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(.subheadline, design: .default))
+                        .foregroundColor(Color(white: 0.6))
                         .multilineTextAlignment(.leading)
                     
                     // Number of days
                     Text("\(template.workoutDayNames.count) workouts")
-                        .font(.caption2)
+                        .font(.system(.subheadline, design: .default, weight: .medium))
                         .foregroundColor(.blue)
-                        .fontWeight(.medium)
                 }
                 
                 Spacer()
@@ -192,7 +192,7 @@ struct TemplateRowView: View {
                     .font(.caption)
             }
             .padding()
-            .background(Color(.systemGray6))
+            .background(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())

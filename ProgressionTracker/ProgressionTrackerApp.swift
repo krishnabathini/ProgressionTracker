@@ -13,6 +13,32 @@ import SwiftData
 @main
 struct ProgressionTrackerApp: App {
     
+    init() {
+        // Configure navigation bar appearance for entire app
+        let navBarAppearance = UINavigationBarAppearance()
+        navBarAppearance.configureWithOpaqueBackground()
+        navBarAppearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0) // #1C1C1E
+        navBarAppearance.shadowColor = .clear // Remove separator line
+        
+        // Title text colors - WHITE for all states
+        navBarAppearance.titleTextAttributes = [
+            .foregroundColor: UIColor.white,
+            .font: UIFont.systemFont(ofSize: 17, weight: .semibold)
+        ]
+        navBarAppearance.largeTitleTextAttributes = [
+            .foregroundColor: UIColor.white,
+            .font: UIFont.systemFont(ofSize: 34, weight: .bold)
+        ]
+        
+        // Apply to all states
+        UINavigationBar.appearance().standardAppearance = navBarAppearance
+        UINavigationBar.appearance().compactAppearance = navBarAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navBarAppearance
+        
+        // Set tint color for buttons (back button, + button)
+        UINavigationBar.appearance().tintColor = .systemBlue
+    }
+    
     /// Shared model container configured with all workout tracking models
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([

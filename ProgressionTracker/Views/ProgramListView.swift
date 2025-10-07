@@ -24,6 +24,8 @@ struct ProgramListView: View {
             .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
             .navigationTitle("My Programs")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarColorScheme(.dark)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -68,14 +70,13 @@ struct ProgramListView: View {
             VStack(spacing: 8) {
                 // Main empty state title
                 Text("No Programs Yet")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                    .font(.system(.title2, design: .default, weight: .semibold))
+                    .foregroundColor(.white)
                 
                 // Subtitle explaining what to do
                 Text("Get started by choosing a workout program")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.system(.body, design: .default, weight: .regular))
+                    .foregroundColor(Color(white: 0.6))
                     .multilineTextAlignment(.center)
             }
             
@@ -86,7 +87,7 @@ struct ProgramListView: View {
                 showingTemplates = true
             }) {
                 Text("Choose Program")
-                    .font(.headline)
+                    .font(.system(.body, design: .default, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -128,22 +129,20 @@ struct ProgramListView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Program name
                     Text(program.name)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
+                        .font(.system(.headline, design: .default, weight: .semibold))
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
                     
                     // Number of workout days
                     Text("\(program.days.count) days")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(.subheadline, design: .default))
+                        .foregroundColor(Color(white: 0.6))
                     
                     // Next workout day or start message
                     if let nextDay = program.nextWorkoutDay {
                         Text("Next: \(nextDay.name)")
-                            .font(.caption)
+                            .font(.system(.subheadline, design: .default, weight: .medium))
                             .foregroundColor(.green)
-                            .fontWeight(.medium)
                     } else if program.days.isEmpty {
                         Text("Add workout days")
                             .font(.caption)
