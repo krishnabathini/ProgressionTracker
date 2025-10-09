@@ -18,6 +18,13 @@ struct ExerciseTrackingView: View {
     @State private var completedSets: [ExerciseSet] = []
     @State private var recommendation: String = ""
     
+    // Weight input state variables
+    @State private var showWeightInput = false
+    @State private var weightInputText = ""
+    
+    // Edit state variables
+    @State private var editingSet: ExerciseSet?
+    
     // MARK: - Session Management
     
     private func findOrCreateSession() {
@@ -88,10 +95,10 @@ struct ExerciseTrackingView: View {
                     currentWeight: lastWeight,
                     exerciseType: exercise.exerciseType
                 )
-                recommendation = "Great job! Try \(String(format: "%.1f", nextWeight)) lbs next time"
+                recommendation = "Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
                 currentWeight = nextWeight // Pre-fill with recommended weight
             } else {
-                recommendation = "Maintain \(String(format: "%.1f", lastWeight)) lbs - aim for all target reps"
+                recommendation = "Maintain \(String(format: "%.1f", lastWeight)) lbs × \(exercise.targetReps) reps"
                 currentWeight = lastWeight
             }
         }
@@ -131,63 +138,174 @@ struct ExerciseTrackingView: View {
         }
     }
     
+    private func deleteSet(_ set: ExerciseSet) {
+        if let index = completedSets.firstIndex(where: { $0.persistentModelID == set.persistentModelID }) {
+            completedSets.remove(at: index)
+            modelContext.delete(set)
+            
+            // Renumber remaining sets
+            for (idx, remainingSet) in completedSets.enumerated() {
+                remainingSet.setNumber = idx + 1
+            }
+            
+            setNumber = completedSets.count + 1
+            try? modelContext.save()
+        }
+    }
+    
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
+            VStack(spacing: 4) {
                 
                 // Progressive overload recommendation banner
                 if !recommendation.isEmpty {
-                    Text(recommendation)
-                        .font(.system(.body, design: .default, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(recommendation.contains("Great job") ? Color.green.opacity(0.3) : Color.yellow.opacity(0.3))
-                        .cornerRadius(12)
-                        .padding(.horizontal)
-                } else {
-                    Text("Complete your first workout to get recommendations")
-                        .font(.system(.subheadline, design: .default))
-                        .foregroundStyle(Color(white: 0.6))
-                        .padding()
+                    VStack(spacing: 4) {
+                        Text(recommendation)
+                            .font(.system(.headline, design: .default, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        recommendation.contains("Try") ? 
+                        Color.green.opacity(0.3) : 
+                        Color.yellow.opacity(0.3)
+                    )
+                    .cornerRadius(0)
                 }
                 
                 Spacer()
                 
+                // Date display above set history
+                if let session = currentSession {
+                    Text(session.date, format: .dateTime.month(.wide).day().year())
+                        .font(.system(.caption, design: .default, weight: .medium))
+                        .foregroundStyle(Color(white: 0.5))
+                        .textCase(.uppercase)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 4)
+                }
+                
                 // Set history section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Completed Sets")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                    
-                    if completedSets.isEmpty {
+                if completedSets.isEmpty {
+                    VStack {
                         Text("No sets completed yet")
                             .font(.system(size: 14))
                             .foregroundStyle(.gray)
-                    } else {
-                        ForEach(completedSets, id: \.setNumber) { set in
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                    .font(.system(size: 16))
-                                
-                                Text("Set \(set.setNumber)")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.white)
-                                
-                                Spacer()
-                                
-                                Text("\(Int(set.weight)) lbs × \(set.reps) reps")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.gray)
+                            .padding()
+                    }
+                    .background(Color(hex: "2C2C2E"))
+                    .cornerRadius(12)
+                } else {
+                    List {
+                        ForEach(completedSets) { set in
+                            if editingSet?.persistentModelID == set.persistentModelID {
+                                // EDIT MODE
+                                VStack(spacing: 12) {
+                                    HStack {
+                                        Text("SET \(set.setNumber)")
+                                            .font(.system(.subheadline, weight: .semibold))
+                                            .foregroundStyle(.blue)
+                                        Spacer()
+                                        Button("Done") {
+                                            try? modelContext.save()
+                                            editingSet = nil
+                                        }
+                                        .foregroundStyle(.blue)
+                                    }
+                                    
+                                    // Reps stepper
+                                    HStack {
+                                        Text("REPS").font(.caption).foregroundStyle(Color(white: 0.6))
+                                        Spacer()
+                                        HStack(spacing: 8) {
+                                            Button { if set.reps > 1 { set.reps -= 1 } } label: {
+                                                Image(systemName: "minus.circle.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(Color(white: 0.5))
+                                            }
+                                            Text("\(set.reps)")
+                                                .font(.system(.title3, weight: .semibold))
+                                                .frame(width: 40)
+                                            Button { if set.reps < 50 { set.reps += 1 } } label: {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(.blue)
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Weight stepper
+                                    HStack {
+                                        Text("WEIGHT").font(.caption).foregroundStyle(Color(white: 0.6))
+                                        Spacer()
+                                        HStack(spacing: 8) {
+                                            Button { if set.weight >= 2.5 { set.weight -= 2.5 } } label: {
+                                                Image(systemName: "minus.circle.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(Color(white: 0.5))
+                                            }
+                                            Text(String(format: "%.1f", set.weight))
+                                                .font(.system(.title3, weight: .semibold))
+                                                .frame(width: 60)
+                                            Button { if set.weight < 1000 { set.weight += 2.5 } } label: {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(.blue)
+                                            }
+                                        }
+                                    }
+                                }
+                                .listRowBackground(Color(hex: "2C2C2E"))
+                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.blue, lineWidth: 2))
+                            } else {
+                                // NORMAL MODE
+                                VStack(spacing: 0) {
+                                    HStack {
+                                        Text("SET \(set.setNumber)")
+                                            .font(.system(.subheadline, design: .default, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                        
+                                        Spacer()
+                                        
+                                        Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
+                                            .font(.system(.subheadline, design: .default))
+                                            .foregroundStyle(Color(white: 0.7))
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        editingSet = set
+                                    }
+                                    
+                                    if set.setNumber != completedSets.last?.setNumber {
+                                        Divider()
+                                            .background(Color(white: 0.3))
+                                            .padding(.top, 12)
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+                                .listRowSeparator(.hidden)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        deleteSet(set)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
-                            .padding(.vertical, 4)
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollDisabled(true)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(hex: "2C2C2E"))
+                    .cornerRadius(12)
+                    .frame(height: CGFloat(completedSets.count * 56))
                 }
-                .padding()
-                .background(Color(hex: "2C2C2E"))
-                .cornerRadius(12)
                 
                 Spacer()
                 
@@ -241,10 +359,16 @@ struct ExerciseTrackingView: View {
                                     .font(.system(size: 24))
                                     .foregroundStyle(.white)
                             }
-                            Text("\(Int(currentWeight))")
+                            Text(String(format: "%.1f", currentWeight))
                                 .font(.system(size: 32, weight: .bold, design: .default))
                                 .foregroundStyle(.white)
-                                .frame(minWidth: 60)
+                                .minimumScaleFactor(0.5)
+                                .lineLimit(1)
+                                .frame(minWidth: 100)
+                                .onTapGesture {
+                                    weightInputText = String(format: "%.1f", currentWeight)
+                                    showWeightInput = true
+                                }
                             Button(action: {
                                 if currentWeight < 1000 {
                                     currentWeight += 2.5
@@ -296,6 +420,16 @@ struct ExerciseTrackingView: View {
             .onAppear {
                 currentReps = exercise.targetReps
                 findOrCreateSession()
+            }
+            .alert("Enter Weight", isPresented: $showWeightInput) {
+                TextField("Weight", text: $weightInputText)
+                    .keyboardType(.decimalPad)
+                Button("Cancel", role: .cancel) { }
+                Button("Set") {
+                    if let weight = Double(weightInputText) {
+                        currentWeight = weight
+                    }
+                }
             }
         }
     }
