@@ -169,7 +169,6 @@ struct ProgramDetailView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .padding(.horizontal)
         }
     }
     

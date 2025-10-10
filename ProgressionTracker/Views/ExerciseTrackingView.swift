@@ -25,6 +25,15 @@ struct ExerciseTrackingView: View {
     // Edit state variables
     @State private var editingSet: ExerciseSet?
     
+    // Computed property for List height
+    private var setListHeight: CGFloat {
+        if editingSet != nil {
+            return CGFloat((completedSets.count - 1) * 44 + 140)
+        } else {
+            return CGFloat(completedSets.count * 44) + 12
+        }
+    }
+    
     // MARK: - Session Management
     
     private func findOrCreateSession() {
@@ -260,7 +269,6 @@ struct ExerciseTrackingView: View {
                                 }
                                 .listRowBackground(Color(hex: "2C2C2E"))
                                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.blue, lineWidth: 2))
                             } else {
                                 // NORMAL MODE
                                 VStack(spacing: 0) {
@@ -302,9 +310,10 @@ struct ExerciseTrackingView: View {
                     .listStyle(.plain)
                     .scrollDisabled(true)
                     .scrollContentBackground(.hidden)
+                    .environment(\.defaultMinListRowHeight, 0)
                     .background(Color(hex: "2C2C2E"))
                     .cornerRadius(12)
-                    .frame(height: CGFloat(completedSets.count * 56))
+                    .frame(height: setListHeight)
                 }
                 
                 Spacer()

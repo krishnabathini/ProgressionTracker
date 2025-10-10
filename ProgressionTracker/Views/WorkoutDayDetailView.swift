@@ -134,7 +134,7 @@ struct WorkoutDayDetailView: View {
                 NavigationLink {
                     ExerciseTrackingView(exercise: exercise)
                 } label: {
-                    ExerciseRowView(exercise: exercise)
+                    ExerciseRowView(exercise: exercise, badgeColor: circleColor(for: exercise))
                 }
                 .listRowBackground(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
                 .listRowSeparator(.hidden)
@@ -151,6 +151,7 @@ struct WorkoutDayDetailView: View {
     /// Individual row view for displaying an exercise with progress badge
     private struct ExerciseRowView: View {
         let exercise: Exercise
+        let badgeColor: Color
         
         var body: some View {
             HStack(spacing: 12) {
@@ -171,12 +172,7 @@ struct WorkoutDayDetailView: View {
                 Spacer()
                 
                 // Progress badge
-                ProgressBadgeView(exercise: exercise)
-                
-                // Right chevron
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
-                    .font(.caption)
+                ProgressBadgeView(exercise: exercise, color: badgeColor)
             }
             .padding(.vertical, 8)
         }
@@ -187,12 +183,11 @@ struct WorkoutDayDetailView: View {
     /// Shows progress status for an exercise based on workout history
     private struct ProgressBadgeView: View {
         let exercise: Exercise
+        let color: Color
         
         var body: some View {
-            // For now, show gray circle as we don't have session data yet
-            // This will be enhanced when we implement workout session tracking
             Circle()
-                .fill(Color.gray)
+                .fill(color)
                 .frame(width: 12, height: 12)
         }
     }
@@ -293,6 +288,44 @@ struct WorkoutDayDetailView: View {
         }
         
         exerciseToDelete = nil
+    }
+    
+    private func getCompletionStatus(for exercise: Exercise) -> (completed: Int, target: Int) {
+        let today = Calendar.current.startOfDay(for: Date())
+        
+        // Get all sessions for this exercise today
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return (0, exercise.targetSets)
+        }
+        
+        // Filter for today's sessions with this exercise
+        let todaySessions = allSessions.filter { session in
+            Calendar.current.isDate(session.date, inSameDayAs: today)
+        }
+        
+        // Count completed sets for this exercise
+        var completedSets = 0
+        for session in todaySessions {
+            completedSets += session.sets.filter { $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted }.count
+        }
+        
+        return (completedSets, exercise.targetSets)
+    }
+    
+    private func circleColor(for exercise: Exercise) -> Color {
+        let status = getCompletionStatus(for: exercise)
+        
+        if status.completed == 0 {
+            return Color(white: 0.4) // Gray - not started
+        } else if status.completed >= status.target {
+            return Color.green // Green - target met
+        } else {
+            return Color.yellow // Yellow - in progress
+        }
     }
 }
 
