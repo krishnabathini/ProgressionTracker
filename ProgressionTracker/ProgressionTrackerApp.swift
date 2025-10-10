@@ -60,13 +60,28 @@ struct ProgressionTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ProgramListView()
-                .task {
-                    // Initialize exercise library on first app launch
-                    // This populates the database with default exercises if they don't exist
-                    let context = sharedModelContainer.mainContext
-                    ExerciseLibraryService.populateDefaultExercises(modelContext: context)
-                }
+            TabView {
+                ProgramListView()
+                    .task {
+                        // Initialize exercise library on first app launch
+                        // This populates the database with default exercises if they don't exist
+                        let context = sharedModelContainer.mainContext
+                        ExerciseLibraryService.populateDefaultExercises(modelContext: context)
+                    }
+                    .tabItem {
+                        Label("Workouts", systemImage: "dumbbell.fill")
+                    }
+                
+                Text("Cardio - Coming Soon")
+                    .tabItem {
+                        Label("Cardio", systemImage: "figure.run")
+                    }
+                
+                ProfileView()
+                    .tabItem {
+                        Label("Profile", systemImage: "person.fill")
+                    }
+            }
         }
         .modelContainer(sharedModelContainer)
     }

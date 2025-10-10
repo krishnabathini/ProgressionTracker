@@ -145,6 +145,25 @@ struct ExerciseTrackingView: View {
         } catch {
             print("Error saving set: \(error)")
         }
+        
+        // Recalculate recommendation after adding set
+        let calculator = ProgressionCalculator()
+        if !completedSets.isEmpty {
+            let lastWeight = completedSets.last!.weight
+            let allSetsHitTarget = completedSets.allSatisfy { $0.reps >= exercise.targetReps }
+            
+            if allSetsHitTarget {
+                let nextWeight = calculator.calculateNextWeight(
+                    currentWeight: lastWeight,
+                    exerciseType: exercise.exerciseType
+                )
+                recommendation = "Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
+                currentWeight = nextWeight
+            } else {
+                recommendation = "Maintain \(String(format: "%.1f", lastWeight)) lbs × \(exercise.targetReps) reps"
+                currentWeight = lastWeight
+            }
+        }
     }
     
     private func deleteSet(_ set: ExerciseSet) {
@@ -162,16 +181,71 @@ struct ExerciseTrackingView: View {
         }
     }
     
+    private func getCurrentWorkoutMetrics() -> (volume: Double, avgReps: Double, lbsPerRep: Double) {
+        guard !completedSets.isEmpty else {
+            return (0, 0, 0)
+        }
+        
+        let volume = completedSets.reduce(0.0) { $0 + ($1.weight * Double($1.reps)) }
+        let avgReps = Double(completedSets.reduce(0) { $0 + $1.reps }) / Double(completedSets.count)
+        let totalReps = completedSets.reduce(0) { $0 + $1.reps }
+        let lbsPerRep = totalReps > 0 ? volume / Double(totalReps) : 0
+        
+        return (volume, avgReps, lbsPerRep)
+    }
+    
+    private func getPreviousWorkoutMetrics() -> (volume: Double, avgReps: Double, lbsPerRep: Double)? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return nil
+        }
+        
+        // Find the most recent session before today with this exercise
+        for session in allSessions {
+            let sessionDate = calendar.startOfDay(for: session.date)
+            
+            // Skip today's sessions
+            if calendar.isDate(sessionDate, inSameDayAs: today) {
+                continue
+            }
+            
+            // Check if this session has sets for this exercise
+            let exerciseSets = session.sets.filter { $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted }
+            
+            if !exerciseSets.isEmpty {
+                let volume = exerciseSets.reduce(0.0) { $0 + ($1.weight * Double($1.reps)) }
+                let avgReps = Double(exerciseSets.reduce(0) { $0 + $1.reps }) / Double(exerciseSets.count)
+                let totalReps = exerciseSets.reduce(0) { $0 + $1.reps }
+                let lbsPerRep = totalReps > 0 ? volume / Double(totalReps) : 0
+                
+                print("Previous session found with \(exerciseSets.count) sets")
+                print("Previous avg reps: \(avgReps)")
+                print("Previous volume: \(volume)")
+                
+                return (volume, avgReps, lbsPerRep)
+            }
+        }
+        
+        return nil
+    }
+    
     var body: some View {
         NavigationStack {
-            VStack(spacing: 4) {
-                
-                // Progressive overload recommendation banner
+            ScrollView {
+                VStack(spacing: 2) {
+                    
+                    // Progressive overload recommendation banner
                 if !recommendation.isEmpty {
                     VStack(spacing: 4) {
                         Text(recommendation)
                             .font(.system(.headline, design: .default, weight: .semibold))
-                            .foregroundStyle(.white)
+                    .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
@@ -181,10 +255,152 @@ struct ExerciseTrackingView: View {
                         Color.green.opacity(0.3) : 
                         Color.yellow.opacity(0.3)
                     )
-                    .cornerRadius(0)
+                    .clipShape(Rectangle())
                 }
                 
                 Spacer()
+                
+                // Metrics section
+                if !completedSets.isEmpty {
+                    let current = getCurrentWorkoutMetrics()
+                    let previous = getPreviousWorkoutMetrics()
+                    
+                    VStack(spacing: 16) {
+                        // Volume
+                        HStack {
+                            Text("VOLUME")
+                                .font(.system(.caption, design: .default, weight: .medium))
+                                .foregroundStyle(Color(white: 0.5))
+                            
+                            Spacer()
+                            
+                            Text("\(Int(current.volume))lbs")
+                                .font(.system(.title3, design: .default, weight: .bold))
+                                .foregroundStyle(.white)
+                            
+                            if let prev = previous {
+                                let diff = current.volume - prev.volume
+                                HStack(spacing: 4) {
+                                    Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                        .font(.system(size: 12, weight: .bold))
+                                    Text("\(Int(abs(diff)))lbs")
+                                        .font(.system(.caption, design: .default, weight: .semibold))
+                                }
+                                .foregroundStyle(diff > 0 ? .green : .red)
+                            }
+                        }
+                        
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .fill(Color(white: 0.2))
+                                    .frame(height: 8)
+                                
+                                if let prev = previous {
+                                    let progress = min(current.volume / prev.volume, 1.5)
+                                    Rectangle()
+                                        .fill(current.volume >= prev.volume ? Color.green : Color.red)
+                                        .frame(width: geometry.size.width * progress, height: 8)
+                                }
+                            }
+                            .cornerRadius(4)
+                        }
+                        .frame(height: 8)
+                        
+                        // Reps per set
+                        HStack {
+                            Text("REPS PER SET")
+                                .font(.system(.caption, design: .default, weight: .medium))
+                                .foregroundStyle(Color(white: 0.5))
+                            
+                            Spacer()
+                            
+                            Text("\(Int(current.avgReps))")
+                                .font(.system(.title3, design: .default, weight: .bold))
+                                .foregroundStyle(.white)
+                            
+                            if let prev = previous {
+                                let diff = current.avgReps - prev.avgReps
+                                
+                                // Only show comparison if there's a meaningful difference
+                                if abs(diff) >= 0.5 {
+                                    let isImprovement = current.avgReps >= Double(exercise.targetReps) || diff > 0
+                                    
+                                    HStack(spacing: 4) {
+                                        Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                            .font(.system(size: 12, weight: .bold))
+                                        Text(String(format: "%.1f", abs(diff)))
+                                            .font(.system(.caption, design: .default, weight: .semibold))
+                                    }
+                                    .foregroundStyle(isImprovement ? .green : .red)
+                                }
+                            }
+                        }
+                        
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .fill(Color(white: 0.2))
+                                    .frame(height: 8)
+                                
+                                if let prev = previous {
+                                    let progress = min(current.avgReps / prev.avgReps, 1.5)
+                                    Rectangle()
+                                        .fill(current.avgReps >= prev.avgReps ? Color.green : Color.red)
+                                        .frame(width: geometry.size.width * progress, height: 8)
+                                }
+                            }
+                            .cornerRadius(4)
+                        }
+                        .frame(height: 8)
+                        
+                        // Lbs per rep
+                        HStack {
+                            Text("LBS PER REP")
+                                .font(.system(.caption, design: .default, weight: .medium))
+                                .foregroundStyle(Color(white: 0.5))
+                            
+                            Spacer()
+                            
+                            Text(String(format: "%.1flbs", current.lbsPerRep))
+                                .font(.system(.title3, design: .default, weight: .bold))
+                                .foregroundStyle(.white)
+                            
+                            if let prev = previous {
+                                let diff = current.lbsPerRep - prev.lbsPerRep
+                                HStack(spacing: 4) {
+                                    Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                        .font(.system(size: 12, weight: .bold))
+                                    Text(String(format: "%.1flbs", abs(diff)))
+                                        .font(.system(.caption, design: .default, weight: .semibold))
+                                }
+                                .foregroundStyle(diff > 0 ? .green : .red)
+                            }
+                        }
+                        
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .fill(Color(white: 0.2))
+                                    .frame(height: 8)
+                                
+                                if let prev = previous {
+                                    let progress = min(current.lbsPerRep / prev.lbsPerRep, 1.5)
+                                    Rectangle()
+                                        .fill(current.lbsPerRep >= prev.lbsPerRep ? Color.green : Color.red)
+                                        .frame(width: geometry.size.width * progress, height: 8)
+                                }
+                            }
+                            .cornerRadius(4)
+                        }
+                        .frame(height: 8)
+                    }
+                    .padding()
+                    .background(Color(hex: "1C1C1E"))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                }
                 
                 // Date display above set history
                 if let session = currentSession {
@@ -275,7 +491,7 @@ struct ExerciseTrackingView: View {
                                     HStack {
                                         Text("SET \(set.setNumber)")
                                             .font(.system(.subheadline, design: .default, weight: .semibold))
-                                            .foregroundStyle(.white)
+                    .foregroundStyle(.white)
                                         
                                         Spacer()
                                         
@@ -415,7 +631,7 @@ struct ExerciseTrackingView: View {
                 .background(Color(hex: "2C2C2E"))
                 .cornerRadius(16)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
             .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
             .navigationTitle(exercise.name)
             .navigationBarTitleDisplayMode(.inline)
