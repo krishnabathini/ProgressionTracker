@@ -235,411 +235,451 @@ struct ExerciseTrackingView: View {
         return nil
     }
     
+    private func loadAllWorkoutHistory() -> [(date: Date, sets: [ExerciseSet])] {
+        let calendar = Calendar.current
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return []
+        }
+        
+        var groupedByDate: [Date: [ExerciseSet]] = [:]
+        
+        for session in allSessions {
+            guard !session.sets.isEmpty else { continue }
+            
+            let exerciseSets = session.sets.filter { 
+                $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted 
+            }
+            
+            if !exerciseSets.isEmpty {
+                let dateKey = calendar.startOfDay(for: session.date)
+                groupedByDate[dateKey, default: []].append(contentsOf: exerciseSets)
+            }
+        }
+        
+        // Convert to array and sort by date (newest first)
+        return groupedByDate.map { (date: $0.key, sets: $0.value.sorted { $0.setNumber < $1.setNumber }) }
+            .sorted { $0.date > $1.date }
+    }
+    
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 2) {
-                    
-                    // Progressive overload recommendation banner
-                if !recommendation.isEmpty {
+            VStack(spacing: 0) {
+                // Scrollable content area
+                ScrollView {
                     VStack(spacing: 4) {
-                        Text(recommendation)
-                            .font(.system(.headline, design: .default, weight: .semibold))
-                    .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        recommendation.contains("Try") ? 
-                        Color.green.opacity(0.3) : 
-                        Color.yellow.opacity(0.3)
-                    )
-                    .clipShape(Rectangle())
-                }
-                
-                Spacer()
-                
-                // Metrics section
-                if !completedSets.isEmpty {
-                    let current = getCurrentWorkoutMetrics()
-                    let previous = getPreviousWorkoutMetrics()
-                    
-                    VStack(spacing: 16) {
-                        // Volume
-                        HStack {
-                            Text("VOLUME")
-                                .font(.system(.caption, design: .default, weight: .medium))
-                                .foregroundStyle(Color(white: 0.5))
-                            
-                            Spacer()
-                            
-                            Text("\(Int(current.volume))lbs")
-                                .font(.system(.title3, design: .default, weight: .bold))
+                        // Recommendation banner (if exists)
+                        if !recommendation.isEmpty {
+                            Text(recommendation)
+                                .font(.system(.body, design: .default, weight: .semibold))
                                 .foregroundStyle(.white)
-                            
-                            if let prev = previous {
-                                let diff = current.volume - prev.volume
-                                HStack(spacing: 4) {
-                                    Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
-                                        .font(.system(size: 12, weight: .bold))
-                                    Text("\(Int(abs(diff)))lbs")
-                                        .font(.system(.caption, design: .default, weight: .semibold))
-                                }
-                                .foregroundStyle(diff > 0 ? .green : .red)
-                            }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(recommendation.starts(with: "Try") ? Color.green.opacity(0.3) : Color.orange.opacity(0.3))
                         }
                         
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color(white: 0.2))
-                                    .frame(height: 8)
-                                
-                                if let prev = previous {
-                                    let progress = min(current.volume / prev.volume, 1.5)
-                                    Rectangle()
-                                        .fill(current.volume >= prev.volume ? Color.green : Color.red)
-                                        .frame(width: geometry.size.width * progress, height: 8)
-                                }
-                            }
-                            .cornerRadius(4)
-                        }
-                        .frame(height: 8)
-                        
-                        // Reps per set
-                        HStack {
-                            Text("REPS PER SET")
-                                .font(.system(.caption, design: .default, weight: .medium))
-                                .foregroundStyle(Color(white: 0.5))
+                        // Metrics (if any sets completed)
+                        if !completedSets.isEmpty {
+                            let current = getCurrentWorkoutMetrics()
+                            let previous = getPreviousWorkoutMetrics()
                             
-                            Spacer()
-                            
-                            Text("\(Int(current.avgReps))")
-                                .font(.system(.title3, design: .default, weight: .bold))
-                                .foregroundStyle(.white)
-                            
-                            if let prev = previous {
-                                let diff = current.avgReps - prev.avgReps
-                                
-                                // Only show comparison if there's a meaningful difference
-                                if abs(diff) >= 0.5 {
-                                    let isImprovement = current.avgReps >= Double(exercise.targetReps) || diff > 0
+                            VStack(spacing: 16) {
+                                // Volume
+                                HStack {
+                                    Text("VOLUME")
+                                        .font(.system(.caption, design: .default, weight: .medium))
+                                        .foregroundStyle(Color(white: 0.5))
                                     
-                                    HStack(spacing: 4) {
-                                        Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
-                                            .font(.system(size: 12, weight: .bold))
-                                        Text(String(format: "%.1f", abs(diff)))
-                                            .font(.system(.caption, design: .default, weight: .semibold))
+                                    Spacer()
+                                    
+                                    Text("\(Int(current.volume))lbs")
+                                        .font(.system(.title3, design: .default, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    
+                                    if let prev = previous {
+                                        let diff = current.volume - prev.volume
+                                        HStack(spacing: 4) {
+                                            Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                                .font(.system(size: 12, weight: .bold))
+                                            Text("\(Int(abs(diff)))lbs")
+                                                .font(.system(.caption, design: .default, weight: .semibold))
+                                        }
+                                        .foregroundStyle(diff > 0 ? .green : .red)
                                     }
-                                    .foregroundStyle(isImprovement ? .green : .red)
                                 }
-                            }
-                        }
-                        
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color(white: 0.2))
-                                    .frame(height: 8)
                                 
-                                if let prev = previous {
-                                    let progress = min(current.avgReps / prev.avgReps, 1.5)
-                                    Rectangle()
-                                        .fill(current.avgReps >= prev.avgReps ? Color.green : Color.red)
-                                        .frame(width: geometry.size.width * progress, height: 8)
+                                GeometryReader { geometry in
+                                    ZStack(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(Color(white: 0.2))
+                                            .frame(height: 8)
+                                        
+                                        if let prev = previous {
+                                            let progress = min(current.volume / prev.volume, 1.5)
+                                            Rectangle()
+                                                .fill(current.volume >= prev.volume ? Color.green : Color.red)
+                                                .frame(width: geometry.size.width * progress, height: 8)
+                                        }
+                                    }
+                                    .cornerRadius(4)
                                 }
-                            }
-                            .cornerRadius(4)
-                        }
-                        .frame(height: 8)
-                        
-                        // Lbs per rep
-                        HStack {
-                            Text("LBS PER REP")
-                                .font(.system(.caption, design: .default, weight: .medium))
-                                .foregroundStyle(Color(white: 0.5))
-                            
-                            Spacer()
-                            
-                            Text(String(format: "%.1flbs", current.lbsPerRep))
-                                .font(.system(.title3, design: .default, weight: .bold))
-                                .foregroundStyle(.white)
-                            
-                            if let prev = previous {
-                                let diff = current.lbsPerRep - prev.lbsPerRep
-                                HStack(spacing: 4) {
-                                    Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
-                                        .font(.system(size: 12, weight: .bold))
-                                    Text(String(format: "%.1flbs", abs(diff)))
-                                        .font(.system(.caption, design: .default, weight: .semibold))
-                                }
-                                .foregroundStyle(diff > 0 ? .green : .red)
-                            }
-                        }
-                        
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color(white: 0.2))
-                                    .frame(height: 8)
+                                .frame(height: 8)
                                 
-                                if let prev = previous {
-                                    let progress = min(current.lbsPerRep / prev.lbsPerRep, 1.5)
-                                    Rectangle()
-                                        .fill(current.lbsPerRep >= prev.lbsPerRep ? Color.green : Color.red)
-                                        .frame(width: geometry.size.width * progress, height: 8)
+                                // Reps per set
+                                HStack {
+                                    Text("REPS PER SET")
+                                        .font(.system(.caption, design: .default, weight: .medium))
+                                        .foregroundStyle(Color(white: 0.5))
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(Int(current.avgReps))")
+                                        .font(.system(.title3, design: .default, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    
+                                    if let prev = previous {
+                                        let diff = current.avgReps - prev.avgReps
+                                        
+                                        // Only show comparison if there's a meaningful difference
+                                        if abs(diff) >= 0.5 {
+                                            let isImprovement = current.avgReps >= Double(exercise.targetReps) || diff > 0
+                                            
+                                            HStack(spacing: 4) {
+                                                Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                Text(String(format: "%.1f", abs(diff)))
+                                                    .font(.system(.caption, design: .default, weight: .semibold))
+                                            }
+                                            .foregroundStyle(isImprovement ? .green : .red)
+                                        }
+                                    }
                                 }
+                                
+                                GeometryReader { geometry in
+                                    ZStack(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(Color(white: 0.2))
+                                            .frame(height: 8)
+                                        
+                                        if let prev = previous {
+                                            let progress = min(current.avgReps / prev.avgReps, 1.5)
+                                            Rectangle()
+                                                .fill(current.avgReps >= prev.avgReps ? Color.green : Color.red)
+                                                .frame(width: geometry.size.width * progress, height: 8)
+                                        }
+                                    }
+                                    .cornerRadius(4)
+                                }
+                                .frame(height: 8)
+                                
+                                // Lbs per rep
+                                HStack {
+                                    Text("LBS PER REP")
+                                        .font(.system(.caption, design: .default, weight: .medium))
+                                        .foregroundStyle(Color(white: 0.5))
+                                    
+                                    Spacer()
+                                    
+                                    Text(String(format: "%.1flbs", current.lbsPerRep))
+                                        .font(.system(.title3, design: .default, weight: .bold))
+                                        .foregroundStyle(.white)
+                                    
+                                    if let prev = previous {
+                                        let diff = current.lbsPerRep - prev.lbsPerRep
+                                        HStack(spacing: 4) {
+                                            Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                                .font(.system(size: 12, weight: .bold))
+                                            Text(String(format: "%.1flbs", abs(diff)))
+                                                .font(.system(.caption, design: .default, weight: .semibold))
+                                        }
+                                        .foregroundStyle(diff > 0 ? .green : .red)
+                                    }
+                                }
+                                
+                                GeometryReader { geometry in
+                                    ZStack(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(Color(white: 0.2))
+                                            .frame(height: 8)
+                                        
+                                        if let prev = previous {
+                                            let progress = min(current.lbsPerRep / prev.lbsPerRep, 1.5)
+                                            Rectangle()
+                                                .fill(current.lbsPerRep >= prev.lbsPerRep ? Color.green : Color.red)
+                                                .frame(width: geometry.size.width * progress, height: 8)
+                                        }
+                                    }
+                                    .cornerRadius(4)
+                                }
+                                .frame(height: 8)
                             }
-                            .cornerRadius(4)
-                        }
-                        .frame(height: 8)
-                    }
-                    .padding()
-                    .background(Color(hex: "1C1C1E"))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                }
-                
-                // Date display above set history
-                if let session = currentSession {
-                    Text(session.date, format: .dateTime.month(.wide).day().year())
-                        .font(.system(.caption, design: .default, weight: .medium))
-                        .foregroundStyle(Color(white: 0.5))
-                        .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 4)
-                }
-                
-                // Set history section
-                if completedSets.isEmpty {
-                    VStack {
-                        Text("No sets completed yet")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.gray)
                             .padding()
-                    }
-                    .background(Color(hex: "2C2C2E"))
-                    .cornerRadius(12)
-                } else {
-                    List {
-                        ForEach(completedSets) { set in
-                            if editingSet?.persistentModelID == set.persistentModelID {
-                                // EDIT MODE
-                                VStack(spacing: 12) {
-                                    HStack {
-                                        Text("SET \(set.setNumber)")
-                                            .font(.system(.subheadline, weight: .semibold))
-                                            .foregroundStyle(.blue)
-                                        Spacer()
-                                        Button("Done") {
-                                            try? modelContext.save()
-                                            editingSet = nil
-                                        }
-                                        .foregroundStyle(.blue)
-                                    }
+                            .background(Color(hex: "1C1C1E"))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 20)
+                        }
+                        
+                        // Set history grouped by date
+                        let workoutHistory = loadAllWorkoutHistory()
+                        
+                        if workoutHistory.isEmpty {
+                            VStack {
+                                Text("No sets completed yet")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.gray)
+                                    .padding()
+                            }
+                            .background(Color(hex: "2C2C2E"))
+                            .cornerRadius(12)
+                            .padding(.horizontal, 20)
+                        } else {
+                            ForEach(workoutHistory, id: \.date) { group in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Date header
+                                    Text(group.date, format: .dateTime.month(.wide).day().year())
+                                        .font(.system(.caption, design: .default, weight: .medium))
+                                        .foregroundStyle(Color(white: 0.5))
+                                        .textCase(.uppercase)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                        .padding(.top, group.date == workoutHistory.first?.date ? 0 : 16)
                                     
-                                    // Reps stepper
-                                    HStack {
-                                        Text("REPS").font(.caption).foregroundStyle(Color(white: 0.6))
-                                        Spacer()
-                                        HStack(spacing: 8) {
-                                            Button { if set.reps > 1 { set.reps -= 1 } } label: {
-                                                Image(systemName: "minus.circle.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(Color(white: 0.5))
-                                            }
-                                            Text("\(set.reps)")
-                                                .font(.system(.title3, weight: .semibold))
-                                                .frame(width: 40)
-                                            Button { if set.reps < 50 { set.reps += 1 } } label: {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(.blue)
+                                    // Container with sets for this date
+                                    List {
+                                        ForEach(group.sets) { set in
+                                            let isToday = Calendar.current.isDateInToday(group.date)
+                                            
+                                            if isToday && editingSet?.persistentModelID == set.persistentModelID {
+                                                // EDIT MODE (only for today's sets)
+                                                VStack(spacing: 12) {
+                                                    HStack {
+                                                        Text("SET \(set.setNumber)")
+                                                            .font(.system(.subheadline, weight: .semibold))
+                                                            .foregroundStyle(.blue)
+                                                        Spacer()
+                                                        Button("Done") {
+                                                            try? modelContext.save()
+                                                            editingSet = nil
+                                                        }
+                                                        .foregroundStyle(.blue)
+                                                    }
+                                                    
+                                                    // Reps stepper
+                                                    HStack {
+                                                        Text("REPS").font(.caption).foregroundStyle(Color(white: 0.6))
+                                                        Spacer()
+                                                        HStack(spacing: 8) {
+                                                            Button { if set.reps > 1 { set.reps -= 1 } } label: {
+                                                                Image(systemName: "minus.circle.fill")
+                                                                    .font(.title2)
+                                                                    .foregroundStyle(Color(white: 0.5))
+                                                            }
+                                                            Text("\(set.reps)")
+                                                                .font(.system(.title3, weight: .semibold))
+                                                                .frame(width: 40)
+                                                            Button { if set.reps < 50 { set.reps += 1 } } label: {
+                                                                Image(systemName: "plus.circle.fill")
+                                                                    .font(.title2)
+                                                                    .foregroundStyle(.blue)
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // Weight stepper
+                                                    HStack {
+                                                        Text("WEIGHT").font(.caption).foregroundStyle(Color(white: 0.6))
+                                                        Spacer()
+                                                        HStack(spacing: 8) {
+                                                            Button { if set.weight >= 2.5 { set.weight -= 2.5 } } label: {
+                                                                Image(systemName: "minus.circle.fill")
+                                                                    .font(.title2)
+                                                                    .foregroundStyle(Color(white: 0.5))
+                                                            }
+                                                            Text(String(format: "%.1f", set.weight))
+                                                                .font(.system(.title3, weight: .semibold))
+                                                                .frame(width: 60)
+                                                            Button { if set.weight < 1000 { set.weight += 2.5 } } label: {
+                                                                Image(systemName: "plus.circle.fill")
+                                                                    .font(.title2)
+                                                                    .foregroundStyle(.blue)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                .listRowBackground(Color(hex: "2C2C2E"))
+                                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                                            } else {
+                                                // NORMAL MODE (read-only for past dates, editable for today)
+                                                VStack(spacing: 0) {
+                                                    HStack {
+                                                        Text("SET \(set.setNumber)")
+                                                            .font(.system(.subheadline, design: .default, weight: .semibold))
+                                                            .foregroundStyle(.white)
+                                                        
+                                                        Spacer()
+                                                        
+                                                        Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
+                                                            .font(.system(.subheadline, design: .default))
+                                                            .foregroundStyle(Color(white: 0.7))
+                                                    }
+                                                    .contentShape(Rectangle())
+                                                    .onTapGesture {
+                                                        if isToday {
+                                                            editingSet = set
+                                                        }
+                                                    }
+                                                    
+                                                    if set.setNumber != group.sets.last?.setNumber {
+                                                        Divider()
+                                                            .background(Color(white: 0.3))
+                                                            .padding(.top, 12)
+                                                    }
+                                                }
+                                                .listRowBackground(Color.clear)
+                                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+                                                .listRowSeparator(.hidden)
+                                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                                    if isToday {
+                                                        Button(role: .destructive) {
+                                                            deleteSet(set)
+                                                        } label: {
+                                                            Label("Delete", systemImage: "trash")
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                    
-                                    // Weight stepper
-                                    HStack {
-                                        Text("WEIGHT").font(.caption).foregroundStyle(Color(white: 0.6))
-                                        Spacer()
-                                        HStack(spacing: 8) {
-                                            Button { if set.weight >= 2.5 { set.weight -= 2.5 } } label: {
-                                                Image(systemName: "minus.circle.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(Color(white: 0.5))
-                                            }
-                                            Text(String(format: "%.1f", set.weight))
-                                                .font(.system(.title3, weight: .semibold))
-                                                .frame(width: 60)
-                                            Button { if set.weight < 1000 { set.weight += 2.5 } } label: {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(.blue)
-                                            }
-                                        }
-                                    }
-                                }
-                                .listRowBackground(Color(hex: "2C2C2E"))
-                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                            } else {
-                                // NORMAL MODE
-                                VStack(spacing: 0) {
-                                    HStack {
-                                        Text("SET \(set.setNumber)")
-                                            .font(.system(.subheadline, design: .default, weight: .semibold))
-                    .foregroundStyle(.white)
-                                        
-                                        Spacer()
-                                        
-                                        Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
-                                            .font(.system(.subheadline, design: .default))
-                                            .foregroundStyle(Color(white: 0.7))
-                                    }
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        editingSet = set
-                                    }
-                                    
-                                    if set.setNumber != completedSets.last?.setNumber {
-                                        Divider()
-                                            .background(Color(white: 0.3))
-                                            .padding(.top, 12)
-                                    }
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
-                                .listRowSeparator(.hidden)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        deleteSet(set)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                                    .listStyle(.plain)
+                                    .scrollDisabled(true)
+                                    .scrollContentBackground(.hidden)
+                                    .environment(\.defaultMinListRowHeight, 0)
+                                    .background(Color(hex: "2C2C2E"))
+                                    .cornerRadius(12)
+                                    .frame(height: CGFloat(group.sets.count * 44) + 12)
+                                    .padding(.horizontal, 20)
                                 }
                             }
                         }
+                        
+                        Spacer(minLength: 20)
                     }
-                    .listStyle(.plain)
-                    .scrollDisabled(true)
-                    .scrollContentBackground(.hidden)
-                    .environment(\.defaultMinListRowHeight, 0)
-                    .background(Color(hex: "2C2C2E"))
-                    .cornerRadius(12)
-                    .frame(height: setListHeight)
                 }
                 
-                Spacer()
-                
-                // Input controls section
-                VStack(spacing: 16) {
-                    // REPS section
+                // Fixed input controls at bottom
+                VStack(spacing: 10) {
+                    // REPS
                     HStack {
                         Text("REPS")
-                            .foregroundStyle(.white)
-                            .font(.system(size: 16, weight: .medium, design: .default))
+                            .font(.system(.caption, design: .default, weight: .semibold))
+                            .foregroundStyle(Color(white: 0.6))
+                        
                         Spacer()
-                        HStack(spacing: 20) {
-                            Button(action: {
-                                if currentReps > 1 {
-                                    currentReps -= 1
-                                }
-                            }) {
+                        
+                        HStack(spacing: 10) {
+                            Button {
+                                if currentReps > 1 { currentReps -= 1 }
+                            } label: {
                                 Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 28))
                                     .foregroundStyle(.white)
                             }
+                            
                             Text("\(currentReps)")
-                                .font(.system(size: 32, weight: .bold, design: .default))
+                                .font(.system(size: 28, weight: .bold))
+                                .frame(width: 50)
                                 .foregroundStyle(.white)
-                                .frame(minWidth: 60)
-                            Button(action: {
-                                if currentReps < 50 {
-                                    currentReps += 1
-                                }
-                            }) {
+                            
+                            Button {
+                                if currentReps < 50 { currentReps += 1 }
+                            } label: {
                                 Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 28))
                                     .foregroundStyle(.white)
                             }
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "2C2C2E"))
+                    .cornerRadius(10)
                     
-                    // WEIGHT section
+                    // WEIGHT
                     HStack {
                         Text("WEIGHT")
-                            .foregroundStyle(.white)
-                            .font(.system(size: 16, weight: .medium, design: .default))
+                            .font(.system(.caption, design: .default, weight: .semibold))
+                            .foregroundStyle(Color(white: 0.6))
+                        
                         Spacer()
-                        HStack(spacing: 20) {
-                            Button(action: {
-                                if currentWeight >= 2.5 {
-                                    currentWeight -= 2.5
-                                }
-                            }) {
+                        
+                        HStack(spacing: 10) {
+                            Button {
+                                if currentWeight >= 2.5 { currentWeight -= 2.5 }
+                            } label: {
                                 Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 28))
                                     .foregroundStyle(.white)
                             }
-                            Text(String(format: "%.1f", currentWeight))
-                                .font(.system(size: 32, weight: .bold, design: .default))
-                                .foregroundStyle(.white)
-                                .minimumScaleFactor(0.5)
-                                .lineLimit(1)
-                                .frame(minWidth: 100)
-                                .onTapGesture {
-                                    weightInputText = String(format: "%.1f", currentWeight)
-                                    showWeightInput = true
-                                }
-                            Button(action: {
-                                if currentWeight < 1000 {
-                                    currentWeight += 2.5
-                                }
-                            }) {
+                            
+                            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                                Text(String(format: "%.1f", currentWeight))
+                                    .font(.system(size: 28, weight: .bold))
+                                    .minimumScaleFactor(0.7)
+                                    .lineLimit(1)
+                                    .foregroundStyle(.white)
+                                    .onTapGesture {
+                                        weightInputText = String(format: "%.1f", currentWeight)
+                                        showWeightInput = true
+                                    }
+                                
+                                Text("lbs")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Color(white: 0.6))
+                            }
+                            
+                            Button {
+                                if currentWeight < 1000 { currentWeight += 2.5 }
+                            } label: {
                                 Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 24))
+                                    .font(.system(size: 28))
                                     .foregroundStyle(.white)
                             }
                         }
                     }
-                    
-                    // Weight unit label
-                    HStack {
-                        Spacer()
-                        Text("lbs")
-                            .foregroundStyle(.white)
-                            .font(.system(size: 16, weight: .medium, design: .default))
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(hex: "2C2C2E"))
+                    .cornerRadius(10)
                     
                     // Add Set button
-                    Button(action: {
+                    Button {
                         addSet()
-                    }) {
+                    } label: {
                         Text("Add Set")
-                            .font(.system(size: 18, weight: .semibold, design: .default))
+                            .font(.system(.body, design: .default, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .frame(height: 48)
                             .background(Color.blue)
-                            .cornerRadius(12)
+                            .cornerRadius(10)
                     }
                 }
-                .padding(20)
-                .background(Color(hex: "2C2C2E"))
-                .cornerRadius(16)
+                .padding(16)
+                .background(Color(hex: "1C1C1E"))
             }
-            }
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
+            .background(Color(hex: "1C1C1E"))
             .navigationTitle(exercise.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back") { dismiss() }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
             .onAppear {

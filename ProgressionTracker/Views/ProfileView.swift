@@ -4,6 +4,7 @@ import SwiftData
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var workoutDates: Set<Date> = []
+    @State private var showWorkoutHistory = false
     
     var body: some View {
         NavigationStack {
@@ -23,7 +24,13 @@ struct ProfileView: View {
                     
                     // Stats cards
                     HStack(spacing: 12) {
-                        StatCard(title: "Total Workouts", value: "\(workoutDates.count)", color: .green)
+                        Button {
+                            showWorkoutHistory = true
+                        } label: {
+                            StatCard(title: "Total Workouts", value: "\(workoutDates.count)", color: .green)
+                        }
+                        .buttonStyle(.plain)
+                        
                         StatCard(title: "This Week", value: "\(workoutsThisWeek())", color: .blue)
                     }
                     .padding(.horizontal, 20)
@@ -46,6 +53,10 @@ struct ProfileView: View {
         }
         .onAppear {
             loadWorkoutDates()
+        }
+        .sheet(isPresented: $showWorkoutHistory) {
+            WorkoutHistoryView()
+                .environment(\.modelContext, modelContext)
         }
     }
     
