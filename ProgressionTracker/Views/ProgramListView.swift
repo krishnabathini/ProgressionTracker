@@ -158,9 +158,9 @@ struct ProgramListView: View {
                 Spacer()
                 
                 // Right chevron
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
-                    .font(.caption)
+//                Image(systemName: "chevron.right")
+//                    .foregroundColor(.gray)
+//                    .font(.caption)
             }
             .padding(.vertical, 8)
         }

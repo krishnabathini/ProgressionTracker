@@ -1,10 +1,16 @@
 import SwiftUI
 import SwiftData
 
-// View for displaying a workout day definition (from a program)
 struct WorkoutDayDetailView: View {
     @Bindable var workoutDay: WorkoutDay
+    @Environment(\.modelContext) private var modelContext
+    
     @State private var showingExerciseLibrary = false
+    @State private var editingExercise: Exercise?
+    @State private var showingEditSheet = false
+    @State private var editTargetSets = 3
+    @State private var editTargetReps = 10
+    @State private var refreshTrigger = UUID()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -31,17 +37,50 @@ struct WorkoutDayDetailView: View {
                 .background(Color(hex: "1C1C1E"))
             } else {
                 // Exercise list
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(workoutDay.exercises.sorted(by: { $0.name < $1.name })) { exercise in
-                            NavigationLink(destination: ExerciseTrackingView(exercise: exercise)) {
-                                ExerciseRowView(exercise: exercise)
+                List {
+                    ForEach(workoutDay.exercises.sorted(by: { $0.name < $1.name })) { exercise in
+                        ZStack {
+                            NavigationLink(destination: 
+                                ExerciseTrackingView(exercise: exercise)
+                                    .onDisappear {
+                                        // Trigger refresh when returning from exercise tracking
+                                        refreshTrigger = UUID()
+                                    }
+                            ) {
+                                EmptyView()
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .opacity(0)
+                            
+                            ExerciseRowContent(
+                                day: workoutDay,
+                                exercise: exercise,
+                                circleColor: circleColor(for: exercise)
+                            )
                         }
+                        .listRowBackground(Color(hex: "2C2C2E"))
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                deleteExercise(exercise)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            
+                            Button {
+                                editingExercise = exercise
+                                editTargetSets = exercise.targetSets
+                                editTargetReps = exercise.targetReps
+                                showingEditSheet = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
+                        .id(refreshTrigger)  // Force view refresh when trigger changes
                     }
-                    .padding()
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .background(Color(hex: "1C1C1E"))
             }
         }
@@ -60,32 +99,237 @@ struct WorkoutDayDetailView: View {
         .sheet(isPresented: $showingExerciseLibrary) {
             ExerciseLibraryView(workoutDay: workoutDay)
         }
+        .sheet(isPresented: $showingEditSheet) {
+            NavigationStack {
+                VStack(spacing: 24) {
+                    if let exercise = editingExercise {
+                        VStack(spacing: 8) {
+                            Text(exercise.name)
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            
+                            Text("Update targets")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.top, 20)
+                    }
+                    
+                    VStack(spacing: 16) {
+                        HStack {
+                            Text("TARGET SETS")
+                                .font(.caption)
+                                .foregroundStyle(Color(white: 0.6))
+                            
+                            Spacer()
+                            
+                            HStack(spacing: 12) {
+                                Button {
+                                    if editTargetSets > 1 { editTargetSets -= 1 }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(.white)
+                                }
+                                
+                                Text("\(editTargetSets)")
+                                    .font(.system(size: 36, weight: .bold))
+                                    .frame(width: 60)
+                                    .foregroundStyle(.white)
+                                
+                                Button {
+                                    if editTargetSets < 10 { editTargetSets += 1 }
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(hex: "2C2C2E"))
+                        .cornerRadius(12)
+                        
+                        HStack {
+                            Text("TARGET REPS")
+                                .font(.caption)
+                                .foregroundStyle(Color(white: 0.6))
+                            
+                            Spacer()
+                            
+                            HStack(spacing: 12) {
+                                Button {
+                                    if editTargetReps > 1 { editTargetReps -= 1 }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(.white)
+                                }
+                                
+                                Text("\(editTargetReps)")
+                                    .font(.system(size: 36, weight: .bold))
+                                    .frame(width: 60)
+                                    .foregroundStyle(.white)
+                                
+                                Button {
+                                    if editTargetReps < 50 { editTargetReps += 1 }
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 32))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(hex: "2C2C2E"))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                    
+                    Spacer()
+                    
+                    Button {
+                        saveExerciseTargets()
+                    } label: {
+                        Text("Save Changes")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                }
+                .background(Color(hex: "1C1C1E"))
+                .navigationTitle("Edit Targets")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            showingEditSheet = false
+                            editingExercise = nil
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+    }
+    
+    // MARK: - Status Indicator Functions
+    
+    private func getCompletionStatus(for exercise: Exercise) -> (completed: Int, target: Int) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return (0, exercise.targetSets)
+        }
+        
+        // Filter for today's sessions
+        let todaySessions = allSessions.filter { session in
+            calendar.isDate(calendar.startOfDay(for: session.date), inSameDayAs: today)
+        }
+        
+        // Count completed sets for this exercise today
+        var completedSets = 0
+        for session in todaySessions {
+            let exerciseSets = session.sets.filter { 
+                $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted 
+            }
+            completedSets += exerciseSets.count
+        }
+        
+        return (completedSets, exercise.targetSets)
+    }
+    
+    private func circleColor(for exercise: Exercise) -> Color {
+        let status = getCompletionStatus(for: exercise)
+        
+        if status.completed == 0 {
+            return Color(white: 0.4) // Grey - not started
+        } else if status.completed >= status.target {
+            return Color.green // Green - target met
+        } else {
+            return Color.yellow // Yellow - in progress
+        }
+    }
+    
+    // MARK: - Exercise Management
+    
+    private func deleteExercise(_ exercise: Exercise) {
+        workoutDay.exercises.removeAll { $0.id == exercise.id }
+        modelContext.delete(exercise)
+        
+        do {
+            try modelContext.save()
+            print("Deleted exercise '\(exercise.name)'")
+            
+            // Haptic feedback for deletion
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.warning)
+        } catch {
+            print("Error deleting exercise: \(error)")
+        }
+    }
+    
+    private func saveExerciseTargets() {
+        guard let exercise = editingExercise else { return }
+        
+        exercise.targetSets = editTargetSets
+        exercise.targetReps = editTargetReps
+        
+        do {
+            try modelContext.save()
+            print("Updated targets for '\(exercise.name)'")
+            
+            // Haptic feedback for successful save
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.success)
+        } catch {
+            print("Error saving targets: \(error)")
+        }
+        
+        showingEditSheet = false
+        editingExercise = nil
     }
 }
 
-private struct ExerciseRowView: View {
+private struct ExerciseRowContent: View {
+    let day: WorkoutDay
     let exercise: Exercise
+    let circleColor: Color
     
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(exercise.name)
-                    .font(.headline)
+                    .font(.system(.body, design: .default, weight: .semibold))
                     .foregroundColor(.white)
                 
                 Text("Target: \(exercise.targetSets) sets × \(exercise.targetReps) reps")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .font(.system(.subheadline, design: .default))
+                    .foregroundColor(Color(white: 0.6))
             }
             
             Spacer()
+            
+            // Status circle - LEFT of chevron
+            Circle()
+                .fill(circleColor)
+                .frame(width: 12, height: 12)
             
             Image(systemName: "chevron.right")
                 .foregroundColor(.gray)
                 .font(.caption)
         }
-        .padding()
-        .background(Color(hex: "2C2C2E"))
-        .cornerRadius(12)
+        .padding(.vertical, 8)
     }
 }

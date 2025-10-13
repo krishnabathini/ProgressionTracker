@@ -19,16 +19,17 @@ struct ProgramDetailView: View {
                     // Top Section: Next Workout (only show if program has days)
                     if !program.days.isEmpty {
                         nextWorkoutSection
+                            .padding(.horizontal)
                     }
                     
                     // Main Section: All Workout Days
                     if program.days.isEmpty {
                         emptyStateView
+                            .padding(.horizontal)
                     } else {
                         workoutDaysSection
                     }
                 }
-                .padding()
             }
             .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
             .navigationTitle(program.name)
@@ -157,18 +158,37 @@ struct ProgramDetailView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal)
             
-            LazyVStack(spacing: 8) {
+            List {
                 ForEach(sortedWorkoutDays) { day in
-                    NavigationLink(destination: WorkoutDayDetailView(workoutDay: day)) {
-                        WorkoutDayRowView(
+                    ZStack {
+                        NavigationLink(destination: WorkoutDayDetailView(workoutDay: day)) {
+                            EmptyView()
+                        }
+                        .opacity(0)
+                        
+                        WorkoutDayRowContent(
                             day: day,
                             isNext: day == program.nextWorkoutDay,
                             isLast: day.orderIndex == program.lastCompletedDayIndex
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .listRowBackground(Color(red: 0.17, green: 0.17, blue: 0.18))
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            dayToDelete = day
+                            showingDeleteAlert = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDisabled(true)
+            .frame(height: CGFloat(sortedWorkoutDays.count * 80))
         }
     }
     
@@ -213,10 +233,10 @@ struct ProgramDetailView: View {
         }
     }
     
-    // MARK: - Workout Day Row View
+    // MARK: - Workout Day Row Content
     
-    /// Individual row view for displaying a workout day
-    private struct WorkoutDayRowView: View {
+    /// Individual row content for displaying a workout day
+    private struct WorkoutDayRowContent: View {
         let day: WorkoutDay
         let isNext: Bool
         let isLast: Bool
@@ -224,54 +244,48 @@ struct ProgramDetailView: View {
         var body: some View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        // Day name
-                        Text(day.name)
-                            .font(.system(.body, design: .default, weight: .semibold))
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        // Badges
-                        HStack(spacing: 6) {
-                            if isNext {
-                                Text("NEXT")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.green)
-                                    .cornerRadius(8)
-                            }
-                            
-                            if isLast {
-                                Text("LAST")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.gray)
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
+                    Text(day.name)
+                        .font(.system(.body, design: .default, weight: .semibold))
+                        .foregroundColor(.white)
                     
-                    // Number of exercises
                     Text(day.exercises.isEmpty ? "No exercises yet" : "\(day.exercises.count) exercises")
                         .font(.system(.subheadline, design: .default))
                         .foregroundColor(Color(white: 0.6))
                 }
                 
-                // Right chevron
+                Spacer()
+                
+                HStack(spacing: 6) {
+                    if isNext {
+                        Text("NEXT")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                    }
+                    
+                    if isLast {
+                        Text("LAST")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.gray)
+                            .cornerRadius(8)
+                    }
+                }
+                
                 Image(systemName: "chevron.right")
                     .foregroundColor(.gray)
                     .font(.caption)
+                    .padding(.trailing, 8)
             }
-            .padding()
-            .background(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
-            .cornerRadius(12)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
         }
     }
     
@@ -304,6 +318,10 @@ struct ProgramDetailView: View {
         do {
             try modelContext.save()
             print("Added workout day '\(trimmedName)' to program '\(program.name)'")
+            
+            // Haptic feedback for successful add
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.success)
         } catch {
             print("Error saving workout day: \(error)")
         }
@@ -351,6 +369,10 @@ struct ProgramDetailView: View {
         do {
             try modelContext.save()
             print("Deleted workout day '\(day.name)'")
+            
+            // Haptic feedback for deletion
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.warning)
         } catch {
             print("Error deleting workout day: \(error)")
         }

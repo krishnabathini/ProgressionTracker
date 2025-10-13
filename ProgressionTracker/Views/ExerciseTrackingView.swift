@@ -91,26 +91,7 @@ struct ExerciseTrackingView: View {
         }
         
         // Calculate progression recommendation
-        let calculator = ProgressionCalculator()
-        if let lastSession = completedSets.last,
-           !completedSets.isEmpty {
-            let lastWeight = lastSession.weight
-            
-            // Check if user hit all target reps in ALL sets
-            let allSetsHitTarget = completedSets.allSatisfy { $0.reps >= exercise.targetReps }
-            
-            if allSetsHitTarget {
-                let nextWeight = calculator.calculateNextWeight(
-                    currentWeight: lastWeight,
-                    exerciseType: exercise.exerciseType
-                )
-                recommendation = "Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
-                currentWeight = nextWeight // Pre-fill with recommended weight
-            } else {
-                recommendation = "Maintain \(String(format: "%.1f", lastWeight)) lbs × \(exercise.targetReps) reps"
-                currentWeight = lastWeight
-            }
-        }
+        updateRecommendation()
     }
     
     private func addSet() {
@@ -147,19 +128,48 @@ struct ExerciseTrackingView: View {
         }
         
         // Recalculate recommendation after adding set
+        updateRecommendation()
+        
+        // Reset reps to target for next set
+        currentReps = exercise.targetReps
+        
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
+    private func updateRecommendation() {
+        // Recalculate recommendation after adding set
         let calculator = ProgressionCalculator()
-        if !completedSets.isEmpty {
-            let lastWeight = completedSets.last!.weight
-            let allSetsHitTarget = completedSets.allSatisfy { $0.reps >= exercise.targetReps }
+        if completedSets.count >= 3 {
+            // Get last 3 sets
+            let lastThreeSets = Array(completedSets.suffix(3))
             
-            if allSetsHitTarget {
+            // Check if last 3 sets are at the SAME weight
+            let weights = lastThreeSets.map { $0.weight }
+            let allSameWeight = Set(weights).count == 1
+            
+            // Check if all 3 sets hit target reps
+            let allHitTargetReps = lastThreeSets.allSatisfy { $0.reps >= exercise.targetReps }
+            
+            let currentSetWeight = completedSets.last!.weight
+            
+            if allSameWeight && allHitTargetReps {
+                // User completed 3 sets at same weight with target reps - progress!
                 let nextWeight = calculator.calculateNextWeight(
-                    currentWeight: lastWeight,
+                    currentWeight: currentSetWeight,
                     exerciseType: exercise.exerciseType
                 )
                 recommendation = "Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
                 currentWeight = nextWeight
             } else {
+                // Haven't completed 3 sets at same weight yet - maintain
+                recommendation = "Maintain \(String(format: "%.1f", currentSetWeight)) lbs × \(exercise.targetReps) reps"
+                currentWeight = currentSetWeight
+            }
+        } else {
+            // Less than 3 sets completed - maintain current weight
+            if let lastWeight = completedSets.last?.weight {
                 recommendation = "Maintain \(String(format: "%.1f", lastWeight)) lbs × \(exercise.targetReps) reps"
                 currentWeight = lastWeight
             }
@@ -178,6 +188,13 @@ struct ExerciseTrackingView: View {
             
             setNumber = completedSets.count + 1
             try? modelContext.save()
+            
+            // Recalculate recommendation after deleting set
+            updateRecommendation()
+            
+            // Haptic feedback for deletion
+            let notificationFeedback = UINotificationFeedbackGenerator()
+            notificationFeedback.notificationOccurred(.warning)
         }
     }
     
@@ -317,11 +334,16 @@ struct ExerciseTrackingView: View {
                                             .fill(Color(white: 0.2))
                                             .frame(height: 8)
                                         
-                                        if let prev = previous {
-                                            let progress = min(current.volume / prev.volume, 1.5)
+                                        if let prev = previous, prev.volume > 0 {
+                                            let progress = min(max(current.volume / prev.volume, 0.1), 1.5)
                                             Rectangle()
                                                 .fill(current.volume >= prev.volume ? Color.green : Color.red)
                                                 .frame(width: geometry.size.width * progress, height: 8)
+                                        } else {
+                                            // No previous workout - show current as full bar in green
+                                            Rectangle()
+                                                .fill(Color.green)
+                                                .frame(width: geometry.size.width, height: 8)
                                         }
                                     }
                                     .cornerRadius(4)
@@ -338,7 +360,7 @@ struct ExerciseTrackingView: View {
                                     
                                     Text("\(Int(current.avgReps))")
                                         .font(.system(.title3, design: .default, weight: .bold))
-                                        .foregroundStyle(.white)
+                    .foregroundStyle(.white)
                                     
                                     if let prev = previous {
                                         let diff = current.avgReps - prev.avgReps
@@ -364,11 +386,16 @@ struct ExerciseTrackingView: View {
                                             .fill(Color(white: 0.2))
                                             .frame(height: 8)
                                         
-                                        if let prev = previous {
-                                            let progress = min(current.avgReps / prev.avgReps, 1.5)
+                                        if let prev = previous, prev.avgReps > 0 {
+                                            let ratio = current.avgReps / prev.avgReps
+                                            let progress = min(max(ratio, 0.1), 1.0)  // Cap at 1.0 for display
                                             Rectangle()
                                                 .fill(current.avgReps >= prev.avgReps ? Color.green : Color.red)
                                                 .frame(width: geometry.size.width * progress, height: 8)
+                                        } else {
+                                            Rectangle()
+                                                .fill(Color.green)
+                                                .frame(width: geometry.size.width, height: 8)
                                         }
                                     }
                                     .cornerRadius(4)
@@ -380,9 +407,9 @@ struct ExerciseTrackingView: View {
                                     Text("LBS PER REP")
                                         .font(.system(.caption, design: .default, weight: .medium))
                                         .foregroundStyle(Color(white: 0.5))
-                                    
-                                    Spacer()
-                                    
+                
+                Spacer()
+                
                                     Text(String(format: "%.1flbs", current.lbsPerRep))
                                         .font(.system(.title3, design: .default, weight: .bold))
                                         .foregroundStyle(.white)
@@ -405,11 +432,16 @@ struct ExerciseTrackingView: View {
                                             .fill(Color(white: 0.2))
                                             .frame(height: 8)
                                         
-                                        if let prev = previous {
-                                            let progress = min(current.lbsPerRep / prev.lbsPerRep, 1.5)
+                                        if let prev = previous, prev.lbsPerRep > 0 {
+                                            let ratio = current.lbsPerRep / prev.lbsPerRep
+                                            let progress = min(max(ratio, 0.1), 1.0)  // Cap at 1.0 for display
                                             Rectangle()
                                                 .fill(current.lbsPerRep >= prev.lbsPerRep ? Color.green : Color.red)
                                                 .frame(width: geometry.size.width * progress, height: 8)
+                                        } else {
+                                            Rectangle()
+                                                .fill(Color.green)
+                                                .frame(width: geometry.size.width, height: 8)
                                         }
                                     }
                                     .cornerRadius(4)
@@ -518,10 +550,10 @@ struct ExerciseTrackingView: View {
                                                     HStack {
                                                         Text("SET \(set.setNumber)")
                                                             .font(.system(.subheadline, design: .default, weight: .semibold))
-                                                            .foregroundStyle(.white)
-                                                        
-                                                        Spacer()
-                                                        
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
                                                         Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
                                                             .font(.system(.subheadline, design: .default))
                                                             .foregroundStyle(Color(white: 0.7))
@@ -626,11 +658,11 @@ struct ExerciseTrackingView: View {
                             }
                             
                             HStack(alignment: .lastTextBaseline, spacing: 6) {
-                                Text(String(format: "%.1f", currentWeight))
+                                Text(currentWeight == 0 ? "0" : String(format: "%.1f", currentWeight))
                                     .font(.system(size: 28, weight: .bold))
                                     .minimumScaleFactor(0.7)
                                     .lineLimit(1)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(currentWeight == 0 ? Color(white: 0.4) : .white)
                                     .onTapGesture {
                                         weightInputText = String(format: "%.1f", currentWeight)
                                         showWeightInput = true
@@ -674,15 +706,16 @@ struct ExerciseTrackingView: View {
             .background(Color(hex: "1C1C1E"))
             .navigationTitle(exercise.name)
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(false)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Back") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
             .onAppear {
+                // This removes the text from the back button
+                UINavigationBar.appearance().topItem?.backButtonDisplayMode = .minimal
+                
                 currentReps = exercise.targetReps
                 findOrCreateSession()
             }
