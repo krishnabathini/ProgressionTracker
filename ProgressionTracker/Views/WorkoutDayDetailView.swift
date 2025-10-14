@@ -4,6 +4,7 @@ import SwiftData
 struct WorkoutDayDetailView: View {
     @Bindable var workoutDay: WorkoutDay
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     
     @State private var showingExerciseLibrary = false
     @State private var editingExercise: Exercise?
@@ -11,6 +12,7 @@ struct WorkoutDayDetailView: View {
     @State private var editTargetSets = 3
     @State private var editTargetReps = 10
     @State private var refreshTrigger = UUID()
+    @State private var showingCompleteConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -37,51 +39,78 @@ struct WorkoutDayDetailView: View {
                 .background(Color(hex: "1C1C1E"))
             } else {
                 // Exercise list
-                List {
-                    ForEach(workoutDay.exercises.sorted(by: { $0.name < $1.name })) { exercise in
-                        ZStack {
-                            NavigationLink(destination: 
-                                ExerciseTrackingView(exercise: exercise)
-                                    .onDisappear {
-                                        // Trigger refresh when returning from exercise tracking
-                                        refreshTrigger = UUID()
-                                    }
-                            ) {
-                                EmptyView()
+                ZStack(alignment: .bottom) {
+                    List {
+                        ForEach(workoutDay.exercises.sorted(by: { $0.name < $1.name })) { exercise in
+                            ZStack {
+                                NavigationLink(destination: 
+                                    ExerciseTrackingView(exercise: exercise)
+                                        .onDisappear {
+                                            // Trigger refresh when returning from exercise tracking
+                                            refreshTrigger = UUID()
+                                            // Removed auto-complete - user must manually complete
+                                        }
+                                ) {
+                                    EmptyView()
+                                }
+                                .opacity(0)
+                                
+                                ExerciseRowContent(
+                                    day: workoutDay,
+                                    exercise: exercise,
+                                    circleColor: circleColor(for: exercise)
+                                )
                             }
-                            .opacity(0)
-                            
-                            ExerciseRowContent(
-                                day: workoutDay,
-                                exercise: exercise,
-                                circleColor: circleColor(for: exercise)
-                            )
+                            .listRowBackground(Color(hex: "2C2C2E"))
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    deleteExercise(exercise)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                
+                                Button {
+                                    editingExercise = exercise
+                                    editTargetSets = exercise.targetSets
+                                    editTargetReps = exercise.targetReps
+                                    showingEditSheet = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
+                            .id(refreshTrigger)  // Force view refresh when trigger changes
                         }
-                        .listRowBackground(Color(hex: "2C2C2E"))
-                        .listRowSeparator(.hidden)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                deleteExercise(exercise)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(hex: "1C1C1E"))
+                    
+                    // Complete Workout button
+                    VStack {
+                        Spacer()
+                        
+                        Button {
+                            if allExercisesComplete() {
+                                // Auto-complete without confirmation if all targets hit
+                                completeWorkout()
+                            } else {
+                                // Show confirmation if targets not met
+                                showingCompleteConfirmation = true
                             }
-                            
-                            Button {
-                                editingExercise = exercise
-                                editTargetSets = exercise.targetSets
-                                editTargetReps = exercise.targetReps
-                                showingEditSheet = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.blue)
+                        } label: {
+                            Text(allExercisesComplete() ? "Workout Complete! ✓" : "Complete Workout")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(allExercisesComplete() ? Color.green : Color.blue)
+                                .cornerRadius(12)
                         }
-                        .id(refreshTrigger)  // Force view refresh when trigger changes
+                        .padding()
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color(hex: "1C1C1E"))
             }
         }
         .navigationTitle(workoutDay.name)
@@ -216,6 +245,74 @@ struct WorkoutDayDetailView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .alert("Complete Workout", isPresented: $showingCompleteConfirmation) {
+            Button("Complete Anyway") {
+                completeWorkout()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You haven't completed all target sets. Complete workout anyway?")
+        }
+    }
+    
+    // MARK: - Workout Completion Functions
+    
+    private func allExercisesComplete() -> Bool {
+        guard !workoutDay.exercises.isEmpty else { return false }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return false
+        }
+        
+        let todaySessions = allSessions.filter { session in
+            calendar.isDate(calendar.startOfDay(for: session.date), inSameDayAs: today)
+        }
+        
+        // Check each exercise has completed target sets
+        for exercise in workoutDay.exercises {
+            var completedSets = 0
+            for session in todaySessions {
+                let exerciseSets = session.sets.filter { 
+                    $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted 
+                }
+                completedSets += exerciseSets.count
+            }
+            
+            if completedSets < exercise.targetSets {
+                return false
+            }
+        }
+        
+        return true
+    }
+    
+    private func completeWorkout() {
+        guard let program = workoutDay.program else { return }
+        
+        // Mark this day as completed in the program
+        program.markDayCompleted(workoutDay)
+        
+        do {
+            try modelContext.save()
+            print("Workout completed! Next workout: \(program.nextWorkoutDay?.name ?? "None")")
+            
+            // Provide haptic feedback
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+            
+            // Navigate back to program detail page
+            dismiss()
+            
+        } catch {
+            print("Error completing workout: \(error)")
         }
     }
     

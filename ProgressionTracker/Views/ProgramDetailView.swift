@@ -41,6 +41,9 @@ struct ProgramDetailView: View {
                 if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                     windowScene.windows.first?.overrideUserInterfaceStyle = .dark
                 }
+                
+                // Check and auto-progress if workout is complete
+                checkAndProgressIfCompleted()
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -292,6 +295,64 @@ struct ProgramDetailView: View {
     /// Returns workout days sorted by orderIndex
     private var sortedWorkoutDays: [WorkoutDay] {
         program.days.sorted { $0.orderIndex < $1.orderIndex }
+    }
+    
+    // MARK: - Auto-Progression
+    
+    /// Checks if today's next workout is complete and auto-progresses if needed
+    private func checkAndProgressIfCompleted() {
+        guard let nextDay = program.nextWorkoutDay else { return }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else { return }
+        
+        let todaySessions = allSessions.filter { session in
+            calendar.isDate(calendar.startOfDay(for: session.date), inSameDayAs: today)
+        }
+        
+        // Check if all exercises in nextDay have completed target sets today
+        guard !nextDay.exercises.isEmpty else { return }
+        
+        var allExercisesComplete = true
+        
+        for exercise in nextDay.exercises {
+            var completedSets = 0
+            for session in todaySessions {
+                let exerciseSets = session.sets.filter { 
+                    $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted 
+                }
+                completedSets += exerciseSets.count
+            }
+            
+            if completedSets < exercise.targetSets {
+                allExercisesComplete = false
+                break
+            }
+        }
+        
+        // If all exercises complete and workout hasn't been marked complete, auto-progress
+        if allExercisesComplete {
+            // Check if this day was already marked complete today
+            let lastCompletedIndex = program.lastCompletedDayIndex
+            
+            // Only mark complete if it hasn't been marked yet
+            if lastCompletedIndex != nextDay.orderIndex {
+                program.markDayCompleted(nextDay)
+                
+                do {
+                    try modelContext.save()
+                    print("Auto-progressed workout after detecting completion")
+                } catch {
+                    print("Error auto-progressing workout: \(error)")
+                }
+            }
+        }
     }
     
     // MARK: - Actions
