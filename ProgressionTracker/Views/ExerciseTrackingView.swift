@@ -664,7 +664,7 @@ struct ExerciseTrackingView: View {
                                     .lineLimit(1)
                                     .foregroundStyle(currentWeight == 0 ? Color(white: 0.4) : .white)
                                     .onTapGesture {
-                                        weightInputText = String(format: "%.1f", currentWeight)
+                                        weightInputText = ""
                                         showWeightInput = true
                                     }
                                 
@@ -720,13 +720,16 @@ struct ExerciseTrackingView: View {
                 findOrCreateSession()
             }
             .alert("Enter Weight", isPresented: $showWeightInput) {
-                TextField("Weight", text: $weightInputText)
+                TextField("", text: $weightInputText)
                     .keyboardType(.decimalPad)
-                Button("Cancel", role: .cancel) { }
+                Button("Cancel", role: .cancel) { 
+                    weightInputText = "" 
+                }
                 Button("Set") {
-                    if let weight = Double(weightInputText) {
+                    if let weight = Double(weightInputText.trimmingCharacters(in: .whitespacesAndNewlines)) {
                         currentWeight = weight
                     }
+                    weightInputText = ""
                 }
             }
         }

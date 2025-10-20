@@ -157,21 +157,6 @@ struct ExerciseLibraryView: View {
             .sheet(isPresented: $showTargetConfig) {
                 NavigationStack {
                     VStack(spacing: 24) {
-                        // Exercise name
-                        if let libraryItem = selectedLibraryItem {
-                            VStack(spacing: 8) {
-                                Text(libraryItem.name)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                
-                                Text("Set your targets")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.top, 20)
-                        }
-                        
                         VStack(spacing: 16) {
                             // Target Sets
                             HStack {

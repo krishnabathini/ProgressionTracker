@@ -18,7 +18,7 @@ class ProgressionCalculator {
     /// - Parameters:
     ///   - exercise: The exercise to evaluate.
     ///   - sessions: All available sessions from the caller (e.g., `@Query`).
-    /// - Returns: `true` if ALL sets in the most recent session for this exercise hit/exceeded target reps.
+    /// - Returns: `true` if exactly 3 sets in the most recent session all meet or exceed the exercise's target reps.
     func shouldIncreaseWeight(for exercise: Exercise, sessions: [WorkoutSession]) -> Bool {
         // Filter to sessions that actually include sets for this exercise
         let exerciseSessions = sessions.filter { session in
@@ -33,8 +33,10 @@ class ProgressionCalculator {
         // Pull the sets for this exercise from that session
         let setsForExercise = mostRecent.sets.filter { $0.exercise == exercise }
 
-        // Require that every set meets or exceeds the target reps
-        return !setsForExercise.isEmpty && setsForExercise.allSatisfy { $0.reps >= exercise.targetReps }
+        // Check if we have exactly 3 sets and if ALL of them meet or exceed the exercise's specific target reps
+        let lastThreeSets = Array(setsForExercise.suffix(3))
+        return lastThreeSets.count == 3 && 
+               lastThreeSets.allSatisfy { $0.reps >= exercise.targetReps }
     }
 
     /// Calculates the recommended next weight for an exercise.
@@ -55,11 +57,45 @@ class ProgressionCalculator {
     ///   - currentWeight: The current working weight.
     ///   - sessions: All available sessions from the caller (e.g., `@Query`).
     func getRecommendation(for exercise: Exercise, currentWeight: Double, sessions: [WorkoutSession]) -> String {
-        if shouldIncreaseWeight(for: exercise, sessions: sessions) {
-            let next = calculateNextWeight(currentWeight: currentWeight, exerciseType: exercise.exerciseType)
-            return "Great job! Try \(next) lbs next time"
+        // Filter sessions for this specific exercise
+        let exerciseSessions = sessions.filter { session in
+            session.sets.contains { $0.exercise == exercise }
+        }
+        
+        // Sort sessions by most recent
+        let sortedSessions = exerciseSessions.sorted { $0.date > $1.date }
+        
+        // Find the most recent session with sets for this exercise
+        guard let mostRecentSession = sortedSessions.first else {
+            return "Start with \(String(format: "%.1f", currentWeight)) lbs for \(exercise.targetReps) reps"
+        }
+        
+        // Get sets for this exercise in the most recent session
+        let exerciseSets = mostRecentSession.sets.filter { $0.exercise == exercise }
+        
+        // Ensure we have at least 3 sets
+        guard exerciseSets.count >= 3 else {
+            return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
+        }
+        
+        // Take the last 3 sets
+        let lastThreeSets = Array(exerciseSets.suffix(3))
+        
+        // Check if ALL last 3 sets met or exceeded target reps at the current weight
+        let allSetsMetTarget = lastThreeSets.allSatisfy { 
+            $0.reps >= exercise.targetReps && 
+            $0.weight == currentWeight 
+        }
+        
+        // If all sets met target, calculate next weight
+        if allSetsMetTarget {
+            let nextWeight = calculateNextWeight(
+                currentWeight: currentWeight, 
+                exerciseType: exercise.exerciseType
+            )
+            return "Great job! Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
         } else {
-            return "Maintain \(currentWeight) lbs - aim for all target reps"
+            return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
         }
     }
 
