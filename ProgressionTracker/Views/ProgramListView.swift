@@ -10,6 +10,18 @@ struct ProgramListView: View {
     @State private var programToDelete: WorkoutProgram?
     @State private var showingDeleteAlert = false
     
+    /// Calculates the overall current workout streak across all programs
+    private var currentStreak: Int {
+        // Aggregate streaks from all programs and return the highest
+        // Alternatively, calculate based on all sessions across all programs
+        return programs.map { $0.currentStreak }.max() ?? 0
+    }
+    
+    /// Returns a warning message if the user needs to workout today to maintain their streak
+    private var streakWarningMessage: String? {
+        return programs.first?.streakWarningMessage
+    }
+    
     var body: some View {
         NavigationStack {
             Group {
@@ -103,19 +115,66 @@ struct ProgramListView: View {
     
     /// Displays the list of existing workout programs
     private var programListView: some View {
-        List {
-            ForEach(programs) { program in
-                NavigationLink(destination: ProgramDetailView(program: program)) {
-                    ProgramRowView(program: program)
+        VStack(spacing: 0) {
+            List {
+                ForEach(programs) { program in
+                    NavigationLink(destination: ProgramDetailView(program: program)) {
+                        ProgramRowView(program: program)
+                    }
+                    .listRowBackground(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
-                .listRowBackground(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .onDelete(perform: confirmDelete)
             }
-            .onDelete(perform: confirmDelete)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            
+            // Streak indicator
+            streakIndicatorView
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+    }
+    
+    // MARK: - Streak Indicator View
+    
+    /// Displays the current workout streak with a fire emoji
+    private var streakIndicatorView: some View {
+        HStack {
+            Spacer()
+            
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "flame.fill")
+                        .foregroundColor(.orange)
+                        .font(.title3)
+                    
+                    Text("\(currentStreak)")
+                        .font(.system(.headline, design: .default, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Text("Day Streak")
+                        .font(.system(.subheadline, design: .default))
+                        .foregroundColor(Color(white: 0.6))
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(Color(red: 0.17, green: 0.17, blue: 0.18)) // #2C2C2E
+                .cornerRadius(12)
+                
+                // Streak warning message
+                if let warningMessage = streakWarningMessage {
+                    Text(warningMessage)
+                        .font(.system(.caption, design: .default, weight: .medium))
+                        .foregroundColor(.yellow)
+                        .padding(.top, 2)
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
     }
     
     // MARK: - Program Row View

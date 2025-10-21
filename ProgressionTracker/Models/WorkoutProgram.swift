@@ -84,4 +84,101 @@ final class WorkoutProgram {
     }
 }
 
+// MARK: - Streak Tracking Extension
+
+extension WorkoutProgram {
+    /// Calculates the current workout streak based on consecutive workout days
+    /// A streak continues if workouts are within 2 days of each other
+    /// A gap of 3 or more days breaks the streak
+    var currentStreak: Int {
+        let calendar = Calendar.current
+        let sessions = self.sessions.sorted { $0.date < $1.date }
+        
+        guard !sessions.isEmpty else { return 0 }
+        
+        // Get unique workout dates (start of day)
+        let uniqueWorkoutDates = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        
+        // Sort unique dates
+        let sortedDates = uniqueWorkoutDates.sorted()
+        
+        guard !sortedDates.isEmpty else { return 0 }
+        
+        var streak = 1
+        var lastWorkoutDate = sortedDates.last!
+        
+        // Iterate backwards through dates
+        for date in sortedDates.reversed().dropFirst() {
+            let daysBetween = calendar.dateComponents([.day], from: date, to: lastWorkoutDate).day ?? 0
+            
+            if daysBetween <= 3 {
+                // If within 2 days, continue streak
+                streak += 1
+                lastWorkoutDate = date
+            } else {
+                // More than 2 days gap breaks streak
+                break
+            }
+        }
+        
+        return streak
+    }
+    
+    /// Calculates the longest workout streak ever achieved in this program
+    var longestStreak: Int {
+        let calendar = Calendar.current
+        
+        // Get unique workout dates
+        let uniqueDates = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        let sortedDates = uniqueDates.sorted()
+        
+        guard !sortedDates.isEmpty else { return 0 }
+        
+        var maxStreak = 1
+        var currentStreak = 1
+        var lastDate = sortedDates[0]
+        
+        // Iterate through all dates to find longest streak
+        for date in sortedDates.dropFirst() {
+            let daysBetween = calendar.dateComponents([.day], from: lastDate, to: date).day ?? 0
+            
+            if daysBetween <= 3 {
+                currentStreak += 1
+                maxStreak = max(maxStreak, currentStreak)
+            } else {
+                currentStreak = 1
+            }
+            
+            lastDate = date
+        }
+        
+        return maxStreak
+    }
+    
+    /// Returns a warning message if the user needs to workout today to maintain their streak
+    /// Shows when it's been 2 days since the last workout (last day to maintain streak)
+    var streakWarningMessage: String? {
+        let calendar = Calendar.current
+        let sessions = self.sessions.sorted { $0.date < $1.date }
+        
+        guard !sessions.isEmpty else { return nil }
+        
+        let uniqueWorkoutDates = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        let sortedDates = uniqueWorkoutDates.sorted()
+        
+        guard let lastWorkoutDate = sortedDates.last else { return nil }
+        
+        // Check if today is the last day to maintain streak
+        let today = calendar.startOfDay(for: Date())
+        let daysSinceLastWorkout = calendar.dateComponents([.day], from: lastWorkoutDate, to: today).day ?? 0
+        
+        // If it's been 3 days since last workout, show warning
+        if daysSinceLastWorkout == 3 {
+            return "Workout today to keep your streak!"
+        }
+        
+        return nil
+    }
+}
+
 
