@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		6B89469A2E9464940033848B /* ProgressionTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ProgressionTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6B89469A2E9464940033848B /* GitLifting.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GitLifting.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		6B89469B2E9464940033848B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				6B89469A2E9464940033848B /* ProgressionTracker.app */,
+				6B89469A2E9464940033848B /* GitLifting.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		6B8946992E9464940033848B /* ProgressionTracker */ = {
+		6B8946992E9464940033848B /* GitLifting */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 6B8946AA2E9464960033848B /* Build configuration list for PBXNativeTarget "ProgressionTracker" */;
+			buildConfigurationList = 6B8946AA2E9464960033848B /* Build configuration list for PBXNativeTarget "GitLifting" */;
 			buildPhases = (
 				6B8946962E9464940033848B /* Sources */,
 				6B8946972E9464940033848B /* Frameworks */,
@@ -63,11 +63,11 @@
 			fileSystemSynchronizedGroups = (
 				6B89469C2E9464940033848B /* ProgressionTracker */,
 			);
-			name = ProgressionTracker;
+			name = GitLifting;
 			packageProductDependencies = (
 			);
 			productName = ProgressionTracker;
-			productReference = 6B89469A2E9464940033848B /* ProgressionTracker.app */;
+			productReference = 6B89469A2E9464940033848B /* GitLifting.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				6B8946992E9464940033848B /* ProgressionTracker */,
+				6B8946992E9464940033848B /* GitLifting */,
 			);
 		};
 /* End PBXProject section */
@@ -314,7 +314,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		6B8946AA2E9464960033848B /* Build configuration list for PBXNativeTarget "ProgressionTracker" */ = {
+		6B8946AA2E9464960033848B /* Build configuration list for PBXNativeTarget "GitLifting" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				6B8946AB2E9464960033848B /* Debug */,

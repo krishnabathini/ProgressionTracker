@@ -1,6 +1,6 @@
 //
-//  ProgressionTrackerApp.swift
-//  ProgressionTracker
+//  GitLiftingApp.swift
+//  GitLifting
 //
 //  Created by Krishna Bathini on 10/6/25.
 //
@@ -8,10 +8,10 @@
 import SwiftUI
 import SwiftData
 
-/// Main app entry point for ProgressionTracker
+/// Main app entry point for GitLifting
 /// Sets up SwiftData model container and initializes the exercise library
 @main
-struct ProgressionTrackerApp: App {
+struct GitLiftingApp: App {
     
     init() {
         // Configure navigation bar appearance for entire app
