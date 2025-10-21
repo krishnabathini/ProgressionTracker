@@ -22,33 +22,59 @@ struct ProgramListView: View {
         return programs.first?.streakWarningMessage
     }
     
-    var body: some View {
-        NavigationStack {
-            Group {
-                if programs.isEmpty {
-                    // Empty state when no programs exist
-                    emptyStateView
-                } else {
-                    // List of existing programs
-                    programListView
+    // MARK: - Custom Navigation Header
+    
+    /// Custom navigation header with GitLifting centered, Programs left, and + button right
+    private var customNavigationHeader: some View {
+        ZStack {
+            // Center - GitLifting text (perfectly centered)
+            Text("GitLifting")
+                .font(.system(.title2, design: .default, weight: .bold))
+                .foregroundColor(.white)
+            
+            // Overlay HStack for left and right elements
+            HStack {
+                // Left side - Programs text
+                Text("Programs")
+                    .font(.system(.subheadline, design: .default, weight: .medium))
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                // Right side - Add button
+                Button(action: {
+                    showingTemplates = true
+                }) {
+                    Image(systemName: "plus")
+                        .foregroundColor(.blue)
+                        .font(.title2)
                 }
             }
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
-            .navigationTitle("My Programs")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingTemplates = true
-                    }) {
-                        Image(systemName: "plus")
-                            .foregroundColor(.blue)
-                            .font(.title2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Custom navigation header
+                customNavigationHeader
+                
+                // Main content
+                Group {
+                    if programs.isEmpty {
+                        // Empty state when no programs exist
+                        emptyStateView
+                    } else {
+                        // List of existing programs
+                        programListView
                     }
                 }
             }
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12)) // #1C1C1E
+            .navigationBarHidden(true)
         }
         .sheet(isPresented: $showingTemplates) {
             ProgramTemplateSelectionView()
