@@ -6,7 +6,9 @@ struct ProfileView: View {
     @State private var workoutDates: Set<Date> = []
     @State private var showWorkoutHistory = false
     @State private var showGitHubAuth = false
+    @State private var showGitHubSettings = false
     @ObservedObject private var authService = GitHubAuthService.shared
+    @ObservedObject private var gitHubSettings = GitHubSettingsService.shared
     
     var body: some View {
         NavigationStack {
@@ -79,6 +81,34 @@ struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 20)
+                        
+                        // GitHub Settings (only show if connected)
+                        if authService.isAuthenticated {
+                            Button {
+                                showGitHubSettings = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(.gray)
+                                    
+                                    Text("GitHub Settings")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.white)
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Color(white: 0.5))
+                                }
+                                .padding()
+                                .background(Color(hex: "2C2C2E"))
+                                .cornerRadius(12)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
+                        }
                     }
                     
                     // Workout heatmap
@@ -106,6 +136,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showGitHubAuth) {
             GitHubAuthView()
+        }
+        .sheet(isPresented: $showGitHubSettings) {
+            GitHubSettingsView()
         }
     }
     
