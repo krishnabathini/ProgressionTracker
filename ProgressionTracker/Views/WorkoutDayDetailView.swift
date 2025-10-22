@@ -42,19 +42,9 @@ struct WorkoutDayDetailView: View {
                 ZStack(alignment: .bottom) {
                     List {
                         ForEach(workoutDay.exercises.sorted(by: { $0.name < $1.name })) { exercise in
-                            ZStack {
-                                NavigationLink(destination: 
-                                    ExerciseTrackingView(exercise: exercise)
-                                        .onDisappear {
-                                            // Trigger refresh when returning from exercise tracking
-                                            refreshTrigger = UUID()
-                                            // Removed auto-complete - user must manually complete
-                                        }
-                                ) {
-                                    EmptyView()
-                                }
-                                .opacity(0)
-                                
+                            NavigationLink {
+                                ExerciseTrackingView(exercise: exercise)
+                            } label: {
                                 ExerciseRowContent(
                                     day: workoutDay,
                                     exercise: exercise,
@@ -423,9 +413,7 @@ private struct ExerciseRowContent: View {
                 .fill(circleColor)
                 .frame(width: 12, height: 12)
             
-            Image(systemName: "chevron.right")
-                .foregroundColor(.gray)
-                .font(.caption)
+
         }
         .padding(.vertical, 8)
     }

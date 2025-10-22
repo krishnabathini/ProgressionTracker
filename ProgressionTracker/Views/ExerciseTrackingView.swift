@@ -8,6 +8,10 @@ struct ExerciseTrackingView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    // Validation state
+    @State private var isValidExercise: Bool = true
+    @State private var validationError: String?
+    
     // Input control state variables
     @State private var currentWeight: Double = 0.0
     @State private var currentReps: Int = 8
@@ -17,6 +21,8 @@ struct ExerciseTrackingView: View {
     @State private var currentSession: WorkoutSession?
     @State private var completedSets: [ExerciseSet] = []
     @State private var recommendation: String = ""
+    @State private var workoutHistory: [(date: Date, sets: [ExerciseSet])] = []
+    @State private var previousMetrics: (volume: Double, avgReps: Double, lbsPerRep: Double)?
     
     // Weight input state variables
     @State private var showWeightInput = false
@@ -34,6 +40,36 @@ struct ExerciseTrackingView: View {
         }
     }
     
+    // MARK: - Validation
+    
+    /// Validates the exercise data without crashing
+    private func validateExercise() {
+        // Check exercise name
+        if exercise.name.isEmpty {
+            validationError = "Exercise name cannot be empty"
+            isValidExercise = false
+            return
+        }
+        
+        // Check target sets
+        if exercise.targetSets <= 0 {
+            validationError = "Target sets must be greater than 0"
+            isValidExercise = false
+            return
+        }
+        
+        // Check target reps
+        if exercise.targetReps <= 0 {
+            validationError = "Target reps must be greater than 0"
+            isValidExercise = false
+            return
+        }
+        
+        // All validations passed
+        isValidExercise = true
+        validationError = nil
+    }
+    
     // MARK: - Session Management
     
     private func findOrCreateSession() {
@@ -41,26 +77,37 @@ struct ExerciseTrackingView: View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         
-        // Fetch all sessions using FetchDescriptor
+        // OPTIMIZATION: Only fetch sessions from last 7 days for faster search
+        let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        
+        // Fetch recent sessions only
         let descriptor = FetchDescriptor<WorkoutSession>(
-            sortBy: [SortDescriptor(\.date)]
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
         
         do {
             let allSessions = try modelContext.fetch(descriptor)
+            // Filter to last 7 days only
+            let recentSessions = allSessions.filter { $0.date >= sevenDaysAgo }
             
             // Filter in Swift code to find session for today with sets for this exercise
-            let todaysSession = allSessions.first { session in
+            let todaysSession = recentSessions.first { session in
                 let sessionDate = calendar.startOfDay(for: session.date)
                 let isToday = sessionDate == today
-                let hasSetsForThisExercise = session.sets.contains { $0.exercise?.persistentModelID == exercise.persistentModelID }
+                let hasSetsForThisExercise = session.sets.contains { set in
+                    guard let setExercise = set.exercise else { return false }
+                    return setExercise.persistentModelID == exercise.persistentModelID
+                }
                 return isToday && hasSetsForThisExercise
             }
             
             if let existingSession = todaysSession {
                 currentSession = existingSession
                 // Load completed sets for this exercise from the session
-                completedSets = existingSession.sets.filter { $0.exercise?.persistentModelID == exercise.persistentModelID }
+                completedSets = existingSession.sets.filter { set in
+                    guard let setExercise = set.exercise else { return false }
+                    return setExercise.persistentModelID == exercise.persistentModelID
+                }
                 setNumber = completedSets.count + 1
             } else {
                 // Create new session for today
@@ -96,7 +143,16 @@ struct ExerciseTrackingView: View {
     
     private func addSet() {
         guard let session = currentSession else {
-            print("No current session available")
+            print("ERROR: No current session available")
+            return
+        }
+        
+        // Validate input
+        guard currentWeight >= 0 else {
+            return
+        }
+        
+        guard currentReps > 0 else {
             return
         }
         
@@ -122,13 +178,20 @@ struct ExerciseTrackingView: View {
         // Save context
         do {
             try modelContext.save()
-            print("Set added: \(currentWeight) lbs × \(currentReps) reps")
         } catch {
-            print("Error saving set: \(error)")
+            print("ERROR saving set: \(error.localizedDescription)")
+            // Remove from array if save failed
+            completedSets.removeLast()
+            setNumber -= 1
+            return
         }
         
         // Recalculate recommendation after adding set
         updateRecommendation()
+        
+        // Reload workout history and metrics to reflect new set
+        loadWorkoutHistory()
+        loadPreviousMetrics()
         
         // Reset reps to target for next set
         currentReps = exercise.targetReps
@@ -139,6 +202,12 @@ struct ExerciseTrackingView: View {
     }
     
     private func updateRecommendation() {
+        // Guard against empty sets array
+        guard !completedSets.isEmpty else {
+            recommendation = ""
+            return
+        }
+        
         // Recalculate recommendation after adding set
         let calculator = ProgressionCalculator()
         if completedSets.count >= 3 {
@@ -152,7 +221,11 @@ struct ExerciseTrackingView: View {
             // Check if all 3 sets hit target reps
             let allHitTargetReps = lastThreeSets.allSatisfy { $0.reps >= exercise.targetReps }
             
-            let currentSetWeight = completedSets.last!.weight
+            // Safe unwrapping of last set
+            guard let lastSet = completedSets.last else {
+                return
+            }
+            let currentSetWeight = lastSet.weight
             
             if allSameWeight && allHitTargetReps {
                 // User completed 3 sets at same weight with target reps - progress!
@@ -192,6 +265,10 @@ struct ExerciseTrackingView: View {
             // Recalculate recommendation after deleting set
             updateRecommendation()
             
+            // Reload workout history and metrics to reflect deletion
+            loadWorkoutHistory()
+            loadPreviousMetrics()
+            
             // Haptic feedback for deletion
             let notificationFeedback = UINotificationFeedbackGenerator()
             notificationFeedback.notificationOccurred(.warning)
@@ -215,6 +292,9 @@ struct ExerciseTrackingView: View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         
+        // OPTIMIZATION: Only look at last 30 days for previous workout
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        
         let descriptor = FetchDescriptor<WorkoutSession>(
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
@@ -223,8 +303,11 @@ struct ExerciseTrackingView: View {
             return nil
         }
         
+        // Filter to last 30 days only
+        let recentSessions = allSessions.filter { $0.date >= thirtyDaysAgo }
+        
         // Find the most recent session before today with this exercise
-        for session in allSessions {
+        for session in recentSessions {
             let sessionDate = calendar.startOfDay(for: session.date)
             
             // Skip today's sessions
@@ -233,17 +316,16 @@ struct ExerciseTrackingView: View {
             }
             
             // Check if this session has sets for this exercise
-            let exerciseSets = session.sets.filter { $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted }
+            let exerciseSets = session.sets.filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+            }
             
             if !exerciseSets.isEmpty {
                 let volume = exerciseSets.reduce(0.0) { $0 + ($1.weight * Double($1.reps)) }
                 let avgReps = Double(exerciseSets.reduce(0) { $0 + $1.reps }) / Double(exerciseSets.count)
                 let totalReps = exerciseSets.reduce(0) { $0 + $1.reps }
                 let lbsPerRep = totalReps > 0 ? volume / Double(totalReps) : 0
-                
-                print("Previous session found with \(exerciseSets.count) sets")
-                print("Previous avg reps: \(avgReps)")
-                print("Previous volume: \(volume)")
                 
                 return (volume, avgReps, lbsPerRep)
             }
@@ -252,8 +334,20 @@ struct ExerciseTrackingView: View {
         return nil
     }
     
-    private func loadAllWorkoutHistory() -> [(date: Date, sets: [ExerciseSet])] {
+    private func loadWorkoutHistory() {
+        workoutHistory = fetchAllWorkoutHistory()
+    }
+    
+    private func loadPreviousMetrics() {
+        previousMetrics = getPreviousWorkoutMetrics()
+    }
+    
+    private func fetchAllWorkoutHistory() -> [(date: Date, sets: [ExerciseSet])] {
         let calendar = Calendar.current
+        
+        // OPTIMIZATION: Only fetch last 30 days of workouts for faster loading
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        
         let descriptor = FetchDescriptor<WorkoutSession>(
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
@@ -262,13 +356,17 @@ struct ExerciseTrackingView: View {
             return []
         }
         
+        // Filter to last 30 days only
+        let recentSessions = allSessions.filter { $0.date >= thirtyDaysAgo }
+        
         var groupedByDate: [Date: [ExerciseSet]] = [:]
         
-        for session in allSessions {
+        for session in recentSessions {
             guard !session.sets.isEmpty else { continue }
             
-            let exerciseSets = session.sets.filter { 
-                $0.exercise?.persistentModelID == exercise.persistentModelID && $0.isCompleted 
+            let exerciseSets = session.sets.filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
             }
             
             if !exerciseSets.isEmpty {
@@ -283,6 +381,65 @@ struct ExerciseTrackingView: View {
     }
     
     var body: some View {
+        Group {
+            if !isValidExercise {
+                // Show error view if exercise data is invalid
+                errorView
+            } else {
+                // Show normal exercise tracking view
+                mainContent
+            }
+        }
+        .onAppear {
+            validateExercise()
+            if isValidExercise {
+                currentReps = exercise.targetReps
+                findOrCreateSession()
+                loadWorkoutHistory()
+                loadPreviousMetrics()
+            }
+        }
+    }
+    
+    // MARK: - Error View
+    
+    private var errorView: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(.orange)
+                
+                Text("Invalid Exercise Data")
+                    .font(.title)
+                    .fontWeight(.bold)
+                
+                if let error = validationError {
+                    Text(error)
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                
+                Button("Go Back") {
+                    dismiss()
+                }
+                .padding()
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(10)
+            }
+            .padding()
+            .background(Color(hex: "1C1C1E"))
+            .navigationTitle("Error")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+    
+    // MARK: - Main Content
+    
+    private var mainContent: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Scrollable content area
@@ -301,7 +458,7 @@ struct ExerciseTrackingView: View {
                         // Metrics (if any sets completed)
                         if !completedSets.isEmpty {
                             let current = getCurrentWorkoutMetrics()
-                            let previous = getPreviousWorkoutMetrics()
+                            let previous = previousMetrics
                             
                             VStack(spacing: 16) {
                                 // Volume
@@ -456,8 +613,6 @@ struct ExerciseTrackingView: View {
                         }
                         
                         // Set history grouped by date
-                        let workoutHistory = loadAllWorkoutHistory()
-                        
                         if workoutHistory.isEmpty {
                             VStack {
                                 Text("No sets completed yet")
@@ -715,9 +870,6 @@ struct ExerciseTrackingView: View {
             .onAppear {
                 // This removes the text from the back button
                 UINavigationBar.appearance().topItem?.backButtonDisplayMode = .minimal
-                
-                currentReps = exercise.targetReps
-                findOrCreateSession()
             }
             .alert("Enter Weight", isPresented: $showWeightInput) {
                 TextField("", text: $weightInputText)
