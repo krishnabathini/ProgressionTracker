@@ -14,6 +14,14 @@ import SwiftData
 struct GitLiftingApp: App {
     
     init() {
+        // Run SwiftData model diagnostics (debug builds only)
+        #if DEBUG
+        // Uncomment to run diagnostics:
+        // ModelDiagnosticService.performDiagnostics()
+        // ModelDiagnosticService.validateModelRelationships()
+        // ModelDiagnosticService.printSchemaInfo()
+        #endif
+        
         // Configure navigation bar appearance for entire app
         let navBarAppearance = UINavigationBarAppearance()
         navBarAppearance.configureWithOpaqueBackground()
@@ -82,7 +90,26 @@ struct GitLiftingApp: App {
                         Label("Profile", systemImage: "person.fill")
                     }
             }
+            .onOpenURL { url in
+                // Handle OAuth callback from GitHub
+                handleOAuthCallback(url)
+            }
         }
         .modelContainer(sharedModelContainer)
+    }
+    
+    /// Handles OAuth callback URLs from GitHub authentication
+    /// - Parameter url: The callback URL containing the authorization code
+    private func handleOAuthCallback(_ url: URL) {
+        // Check if this is a GitHub OAuth callback
+        guard url.scheme == "progressiontracker",
+              url.host == "oauth" else {
+            return
+        }
+        
+        // The auth service handles the OAuth flow internally
+        // It will update its published properties (isAuthenticated, authenticationError, etc.)
+        // which the UI observes automatically
+        print("Received OAuth callback: \(url)")
     }
 }

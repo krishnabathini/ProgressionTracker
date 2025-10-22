@@ -5,6 +5,8 @@ struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var workoutDates: Set<Date> = []
     @State private var showWorkoutHistory = false
+    @State private var showGitHubAuth = false
+    @ObservedObject private var authService = GitHubAuthService.shared
     
     var body: some View {
         NavigationStack {
@@ -35,6 +37,50 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 20)
                     
+                    // GitHub Integration Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("GitHub Integration")
+                            .font(.headline)
+                            .padding(.horizontal, 20)
+                        
+                        Button {
+                            showGitHubAuth = true
+                        } label: {
+                            HStack {
+                                Image(systemName: authService.isAuthenticated ? "link.circle.fill" : "link.circle")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(authService.isAuthenticated ? .green : .blue)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(authService.isAuthenticated ? "Connected to GitHub" : "Connect to GitHub")
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    
+                                    if authService.isAuthenticated, let user = authService.currentUser {
+                                        Text("@\(user.login)")
+                                            .font(.caption)
+                                            .foregroundStyle(Color(white: 0.6))
+                                    } else {
+                                        Text("Sync your workouts to GitHub")
+                                            .font(.caption)
+                                            .foregroundStyle(Color(white: 0.6))
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Color(white: 0.5))
+                            }
+                            .padding()
+                            .background(Color(hex: "2C2C2E"))
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+                    }
+                    
                     // Workout heatmap
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Workout Activity")
@@ -57,6 +103,9 @@ struct ProfileView: View {
         .sheet(isPresented: $showWorkoutHistory) {
             WorkoutHistoryView()
                 .environment(\.modelContext, modelContext)
+        }
+        .sheet(isPresented: $showGitHubAuth) {
+            GitHubAuthView()
         }
     }
     
