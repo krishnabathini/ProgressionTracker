@@ -80,11 +80,6 @@ struct GitLiftingApp: App {
                         Label("Workouts", systemImage: "dumbbell.fill")
                     }
                 
-                Text("Cardio - Coming Soon")
-                    .tabItem {
-                        Label("Cardio", systemImage: "figure.run")
-                    }
-                
                 ProfileView()
                     .tabItem {
                         Label("Profile", systemImage: "person.fill")

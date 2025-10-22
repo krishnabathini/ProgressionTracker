@@ -15,10 +15,11 @@ class ProgressionCalculator {
     // MARK: - Main Calculation Methods
 
     /// Determines if weight should be increased for an exercise based on the most recent session.
+    /// Enhanced with meaningful weight increase validation.
     /// - Parameters:
     ///   - exercise: The exercise to evaluate.
     ///   - sessions: All available sessions from the caller (e.g., `@Query`).
-    /// - Returns: `true` if exactly 3 sets in the most recent session all meet or exceed the exercise's target reps.
+    /// - Returns: `true` if exactly 3 sets in the most recent session all meet or exceed the exercise's target reps AND the increase is meaningful.
     func shouldIncreaseWeight(for exercise: Exercise, sessions: [WorkoutSession]) -> Bool {
         // Filter to sessions that actually include sets for this exercise
         let exerciseSessions = sessions.filter { session in
@@ -35,8 +36,23 @@ class ProgressionCalculator {
 
         // Check if we have exactly 3 sets and if ALL of them meet or exceed the exercise's specific target reps
         let lastThreeSets = Array(setsForExercise.suffix(3))
-        return lastThreeSets.count == 3 && 
-               lastThreeSets.allSatisfy { $0.reps >= exercise.targetReps }
+        guard lastThreeSets.count == 3 && 
+              lastThreeSets.allSatisfy({ $0.reps >= exercise.targetReps }) else {
+            return false
+        }
+        
+        // Additional check: ensure the weight increase would be meaningful
+        // Get the current weight from the most recent sets
+        guard let currentWeight = lastThreeSets.first?.weight else { return false }
+        
+        let nextWeight = calculateNextWeight(
+            currentWeight: currentWeight, 
+            exerciseType: exercise.exerciseType
+        )
+        
+        // Only recommend increase if it's meaningful (at least 2.5 lbs)
+        let minIncrease: Double = 2.5
+        return nextWeight > currentWeight + minIncrease
     }
 
     /// Calculates the recommended next weight for an exercise.
@@ -52,51 +68,56 @@ class ProgressionCalculator {
     }
 
     /// Returns a user-friendly recommendation message for the next session.
+    /// Enhanced with meaningful weight increases and robust filtering.
     /// - Parameters:
     ///   - exercise: The exercise being performed.
     ///   - currentWeight: The current working weight.
     ///   - sessions: All available sessions from the caller (e.g., `@Query`).
     func getRecommendation(for exercise: Exercise, currentWeight: Double, sessions: [WorkoutSession]) -> String {
-        // Filter sessions for this specific exercise
+        // Robust session filtering for specific exercise
         let exerciseSessions = sessions.filter { session in
             session.sets.contains { $0.exercise == exercise }
         }
         
-        // Sort sessions by most recent
-        let sortedSessions = exerciseSessions.sorted { $0.date > $1.date }
-        
-        // Find the most recent session with sets for this exercise
-        guard let mostRecentSession = sortedSessions.first else {
+        // Safeguard against empty session history
+        guard let mostRecentSession = exerciseSessions.sorted(by: { $0.date > $1.date }).first else {
             return "Start with \(String(format: "%.1f", currentWeight)) lbs for \(exercise.targetReps) reps"
         }
         
-        // Get sets for this exercise in the most recent session
+        // Filter sets for this specific exercise
         let exerciseSets = mostRecentSession.sets.filter { $0.exercise == exercise }
         
-        // Ensure we have at least 3 sets
+        // Ensure sufficient set history
         guard exerciseSets.count >= 3 else {
             return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
         }
         
-        // Take the last 3 sets
+        // Analyze most recent 3 sets
         let lastThreeSets = Array(exerciseSets.suffix(3))
         
-        // Check if ALL last 3 sets met or exceeded target reps at the current weight
+        // Comprehensive performance criteria
         let allSetsMetTarget = lastThreeSets.allSatisfy { 
             $0.reps >= exercise.targetReps && 
             $0.weight == currentWeight 
         }
         
-        // If all sets met target, calculate next weight
+        // Calculate potential progression
         if allSetsMetTarget {
             let nextWeight = calculateNextWeight(
                 currentWeight: currentWeight, 
                 exerciseType: exercise.exerciseType
             )
-            return "Great job! Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
-        } else {
-            return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
+            
+            // Meaningful weight increase check
+            // Ensures progression is significant enough to warrant change
+            let minIncrease: Double = 2.5  // Minimum meaningful increase
+            if nextWeight > currentWeight + minIncrease {
+                return "Great job! Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
+            }
         }
+        
+        // Default to maintenance recommendation
+        return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
     }
 
     /// Determines progression status based on the last three sessions for the exercise.

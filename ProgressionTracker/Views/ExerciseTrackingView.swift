@@ -90,15 +90,12 @@ struct ExerciseTrackingView: View {
             // Filter to last 7 days only
             let recentSessions = allSessions.filter { $0.date >= sevenDaysAgo }
             
-            // Filter in Swift code to find session for today with sets for this exercise
+            // Filter in Swift code to find session for today's workout day
             let todaysSession = recentSessions.first { session in
                 let sessionDate = calendar.startOfDay(for: session.date)
                 let isToday = sessionDate == today
-                let hasSetsForThisExercise = session.sets.contains { set in
-                    guard let setExercise = set.exercise else { return false }
-                    return setExercise.persistentModelID == exercise.persistentModelID
-                }
-                return isToday && hasSetsForThisExercise
+                let isSameWorkoutDay = session.day?.persistentModelID == exercise.day?.persistentModelID
+                return isToday && isSameWorkoutDay
             }
             
             if let existingSession = todaysSession {
@@ -124,7 +121,7 @@ struct ExerciseTrackingView: View {
             }
         } catch {
             print("Error fetching sessions: \(error)")
-            // Fallback: create new session
+            // Fallback: create new session for today's workout day
             let newSession = WorkoutSession(
                 program: exercise.day?.program,
                 day: exercise.day,
