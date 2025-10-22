@@ -5,6 +5,7 @@ struct WorkoutDayDetailView: View {
     @Bindable var workoutDay: WorkoutDay
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var gitHubAuth = GitHubAuthService.shared
     
     @State private var showingExerciseLibrary = false
     @State private var editingExercise: Exercise?
@@ -13,6 +14,8 @@ struct WorkoutDayDetailView: View {
     @State private var editTargetReps = 10
     @State private var refreshTrigger = UUID()
     @State private var showingCompleteConfirmation = false
+    @State private var showingGitHubError = false
+    @State private var gitHubErrorMessage = ""
     
     var body: some View {
         VStack(spacing: 0) {
@@ -90,7 +93,7 @@ struct WorkoutDayDetailView: View {
                                 showingCompleteConfirmation = true
                             }
                         } label: {
-                            Text(allExercisesComplete() ? "Workout Complete! ✓" : "Complete Workout")
+                            Text(completeWorkoutButtonText())
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
@@ -244,9 +247,22 @@ struct WorkoutDayDetailView: View {
         } message: {
             Text("You haven't completed all target sets. Complete workout anyway?")
         }
+        .alert("GitHub Error", isPresented: $showingGitHubError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(gitHubErrorMessage)
+        }
     }
     
     // MARK: - Workout Completion Functions
+    
+    private func completeWorkoutButtonText() -> String {
+        if gitHubAuth.isAuthenticated {
+            return allExercisesComplete() ? "commit gains ✓" : "commit gains"
+        } else {
+            return allExercisesComplete() ? "Workout Complete! ✓" : "Complete Workout"
+        }
+    }
     
     private func allExercisesComplete() -> Bool {
         guard !workoutDay.exercises.isEmpty else { return false }
@@ -294,6 +310,13 @@ struct WorkoutDayDetailView: View {
             try modelContext.save()
             print("Workout completed! Next workout: \(program.nextWorkoutDay?.name ?? "None")")
             
+            // Log to GitHub if authenticated
+            if gitHubAuth.isAuthenticated {
+                Task {
+                    await logWorkoutToGitHub()
+                }
+            }
+            
             // Provide haptic feedback
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
@@ -303,6 +326,80 @@ struct WorkoutDayDetailView: View {
             
         } catch {
             print("Error completing workout: \(error)")
+        }
+    }
+    
+    private func logWorkoutToGitHub() async {
+        // Fetch today's workout session to get all sets
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            print("Failed to fetch sessions for GitHub logging")
+            return
+        }
+        
+        // Find today's session for this day
+        guard let todaySession = allSessions.first(where: { session in
+            calendar.isDate(calendar.startOfDay(for: session.date), inSameDayAs: today) &&
+            session.day?.persistentModelID == workoutDay.persistentModelID
+        }) else {
+            print("No session found for today")
+            return
+        }
+        
+        // Build workout data from the session
+        var exercises: [ExerciseLogData] = []
+        
+        // Group sets by exercise
+        let groupedSets = Dictionary(grouping: todaySession.sets) { set in
+            set.exercise?.persistentModelID
+        }
+        
+        for (exerciseID, sets) in groupedSets {
+            guard let exerciseID = exerciseID,
+                  let firstSet = sets.first,
+                  let exercise = firstSet.exercise else {
+                continue
+            }
+            
+            let setData = sets.map { set in
+                SetLogData(weight: set.weight, reps: set.reps, unit: "lbs")
+            }
+            
+            exercises.append(ExerciseLogData(name: exercise.name, sets: setData))
+        }
+        
+        let workoutData = WorkoutLogData(
+            programName: workoutDay.program?.name ?? "Workout",
+            dayName: workoutDay.name,
+            exercises: exercises
+        )
+        
+        // Log to GitHub
+        print("🔄 Attempting to log workout to GitHub...")
+        print("   Repository: \(GitHubSettingsService.shared.repositoryName)")
+        print("   Private: \(GitHubSettingsService.shared.isRepositoryPrivate)")
+        print("   Exercises: \(exercises.count)")
+        
+        let result = await GitHubRepositoryService.shared.logWorkout(
+            workoutData: workoutData,
+            date: Date()
+        )
+        
+        await MainActor.run {
+            switch result {
+            case .success:
+                print("✅ Workout logged to GitHub successfully!")
+            case .failure(let error):
+                print("❌ Failed to log workout to GitHub: \(error)")
+                gitHubErrorMessage = "Failed to log workout to GitHub: \(error.localizedDescription)"
+                showingGitHubError = true
+            }
         }
     }
     

@@ -14,7 +14,15 @@ class GitHubRepositoryService {
     
     // MARK: - Constants
     private let apiBaseURL = "https://api.github.com"
-    private let defaultRepoName = "workout-tracker"
+    
+    // Get repository name from settings
+    private var repositoryName: String {
+        GitHubSettingsService.shared.repositoryName
+    }
+    
+    private var isPrivateRepo: Bool {
+        GitHubSettingsService.shared.isRepositoryPrivate
+    }
     
     // MARK: - Initialization
     private init() {}
@@ -24,11 +32,28 @@ class GitHubRepositoryService {
     /// Creates a workout log repository if it doesn't exist
     /// - Returns: Result containing the repository information or an error
     func createWorkoutRepository() async -> Result<GitHubRepository, Error> {
+        print("📦 Creating/verifying repository...")
+        
         guard let token = KeychainService.shared.getAccessToken() else {
+            print("   ❌ No access token found")
             return .failure(GitHubAuthError.tokenNotFound)
         }
         
+        // First, try to fetch existing repository
+        print("   🔍 Checking if repository exists: \(repositoryName)")
+        let existingRepo = await getRepository(name: repositoryName)
+        
+        switch existingRepo {
+        case .success(let repo):
+            print("   ✅ Repository already exists: \(repo.htmlUrl)")
+            return .success(repo)
+        case .failure:
+            print("   ℹ️ Repository doesn't exist, creating new one...")
+        }
+        
+        // Repository doesn't exist, create it
         guard let url = URL(string: "\(apiBaseURL)/user/repos") else {
+            print("   ❌ Invalid URL")
             return .failure(GitHubRepositoryError.invalidURL)
         }
         
@@ -39,11 +64,15 @@ class GitHubRepositoryService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let repoData: [String: Any] = [
-            "name": defaultRepoName,
+            "name": repositoryName,
             "description": "GitLifting - My workout progression tracker",
-            "private": false,
+            "private": isPrivateRepo,
             "auto_init": true
         ]
+        
+        print("   📝 Creating repository with settings:")
+        print("      Name: \(repositoryName)")
+        print("      Private: \(isPrivateRepo)")
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: repoData)
@@ -51,22 +80,34 @@ class GitHubRepositoryService {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("   ❌ Invalid HTTP response")
                 return .failure(GitHubRepositoryError.invalidResponse)
             }
             
+            print("   📊 Repository creation response: \(httpResponse.statusCode)")
+            
             if httpResponse.statusCode == 422 {
+                print("   ℹ️ Repository already exists (422), fetching...")
                 // Repository already exists, fetch it instead
-                return await getRepository(name: defaultRepoName)
+                return await getRepository(name: repositoryName)
             }
             
             guard httpResponse.statusCode == 201 else {
+                print("   ❌ Failed to create repository: \(httpResponse.statusCode)")
+                // Try to get error message from response
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = errorDict["message"] as? String {
+                    print("   Error message: \(message)")
+                }
                 return .failure(GitHubRepositoryError.apiError(statusCode: httpResponse.statusCode))
             }
             
             let repository = try JSONDecoder().decode(GitHubRepository.self, from: data)
+            print("   ✅ Repository created successfully: \(repository.htmlUrl)")
             return .success(repository)
             
         } catch {
+            print("   ❌ Exception during repository creation: \(error)")
             return .failure(error)
         }
     }
@@ -76,14 +117,20 @@ class GitHubRepositoryService {
     /// - Returns: Result containing the repository information or an error
     func getRepository(name: String) async -> Result<GitHubRepository, Error> {
         guard let token = KeychainService.shared.getAccessToken() else {
+            print("   ❌ No access token for getRepository")
             return .failure(GitHubAuthError.tokenNotFound)
         }
         
         guard let user = GitHubAuthService.shared.currentUser else {
+            print("   ❌ No current user for getRepository")
             return .failure(GitHubRepositoryError.userNotFound)
         }
         
-        guard let url = URL(string: "\(apiBaseURL)/repos/\(user.login)/\(name)") else {
+        let urlString = "\(apiBaseURL)/repos/\(user.login)/\(name)"
+        print("   🔍 Fetching repository: \(urlString)")
+        
+        guard let url = URL(string: urlString) else {
+            print("   ❌ Invalid URL: \(urlString)")
             return .failure(GitHubRepositoryError.invalidURL)
         }
         
@@ -95,17 +142,25 @@ class GitHubRepositoryService {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("   ❌ Invalid HTTP response type")
                 return .failure(GitHubRepositoryError.invalidResponse)
             }
             
+            print("   📊 Get repository response: \(httpResponse.statusCode)")
+            
             guard httpResponse.statusCode == 200 else {
+                if httpResponse.statusCode == 404 {
+                    print("   ℹ️ Repository not found (404)")
+                }
                 return .failure(GitHubRepositoryError.apiError(statusCode: httpResponse.statusCode))
             }
             
             let repository = try JSONDecoder().decode(GitHubRepository.self, from: data)
+            print("   ✅ Repository fetched successfully")
             return .success(repository)
             
         } catch {
+            print("   ❌ Exception during getRepository: \(error)")
             return .failure(error)
         }
     }
@@ -128,10 +183,20 @@ class GitHubRepositoryService {
         let workoutContent = formatWorkoutAsMarkdown(workoutData: workoutData, date: date)
         let fileName = "workouts/\(formatDateForFileName(date)).md"
         
+        // Ensure repository exists first
+        let repoResult = await createWorkoutRepository()
+        switch repoResult {
+        case .failure(let error):
+            print("Failed to create repository: \(error)")
+            return .failure(error)
+        case .success(let repo):
+            print("Repository verified/created: \(repo.name)")
+        }
+        
         // Create or update the file in the repository
         let result = await createOrUpdateFile(
             owner: user.login,
-            repo: defaultRepoName,
+            repo: repositoryName,
             path: fileName,
             content: workoutContent,
             message: "Workout completed: \(formatDateForCommit(date))",
@@ -152,7 +217,13 @@ class GitHubRepositoryService {
         message: String,
         token: String
     ) async -> Result<Void, Error> {
-        guard let url = URL(string: "\(apiBaseURL)/repos/\(owner)/\(repo)/contents/\(path)") else {
+        let urlString = "\(apiBaseURL)/repos/\(owner)/\(repo)/contents/\(path)"
+        print("📝 Creating file in repository...")
+        print("   URL: \(urlString)")
+        print("   Path: \(path)")
+        
+        guard let url = URL(string: urlString) else {
+            print("   ❌ Invalid URL")
             return .failure(GitHubRepositoryError.invalidURL)
         }
         
@@ -164,6 +235,7 @@ class GitHubRepositoryService {
         
         // Encode content to base64
         guard let contentData = content.data(using: .utf8) else {
+            print("   ❌ Failed to encode content")
             return .failure(GitHubRepositoryError.encodingError)
         }
         let base64Content = contentData.base64EncodedString()
@@ -173,6 +245,9 @@ class GitHubRepositoryService {
         let getResult = await getFileSHA(owner: owner, repo: repo, path: path, token: token)
         if case .success(let existingSHA) = getResult {
             sha = existingSHA
+            print("   ℹ️ File exists, updating with SHA")
+        } else {
+            print("   ℹ️ File doesn't exist, creating new")
         }
         
         var requestBody: [String: Any] = [
@@ -187,19 +262,30 @@ class GitHubRepositoryService {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("   ❌ Invalid HTTP response type")
                 return .failure(GitHubRepositoryError.invalidResponse)
             }
             
+            print("   📊 File creation response: \(httpResponse.statusCode)")
+            
             guard (200...201).contains(httpResponse.statusCode) else {
+                print("   ❌ Failed to create file: \(httpResponse.statusCode)")
+                // Try to get error message
+                if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let errorMessage = errorDict["message"] as? String {
+                    print("   Error: \(errorMessage)")
+                }
                 return .failure(GitHubRepositoryError.apiError(statusCode: httpResponse.statusCode))
             }
             
+            print("   ✅ File created/updated successfully!")
             return .success(())
             
         } catch {
+            print("   ❌ Exception during file creation: \(error)")
             return .failure(error)
         }
     }
