@@ -330,6 +330,10 @@ struct WorkoutDayDetailView: View {
     }
     
     private func logWorkoutToGitHub() async {
+        print("🔄 Attempting to log workout to GitHub...")
+        print("   Repository: \(GitHubSettingsService.shared.repositoryName)")
+        print("   Private: \(GitHubSettingsService.shared.isRepositoryPrivate)")
+        
         // Fetch today's workout session to get all sets
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
@@ -339,18 +343,28 @@ struct WorkoutDayDetailView: View {
         )
         
         guard let allSessions = try? modelContext.fetch(descriptor) else {
-            print("Failed to fetch sessions for GitHub logging")
+            print("   ❌ Failed to fetch sessions for GitHub logging")
             return
         }
+        
+        print("   📊 Found \(allSessions.count) total sessions")
         
         // Find today's session for this day
         guard let todaySession = allSessions.first(where: { session in
             calendar.isDate(calendar.startOfDay(for: session.date), inSameDayAs: today) &&
             session.day?.persistentModelID == workoutDay.persistentModelID
         }) else {
-            print("No session found for today")
+            print("   ❌ No session found for today")
+            print("   Looking for day: \(workoutDay.name) (ID: \(workoutDay.persistentModelID))")
+            print("   Today: \(today)")
+            print("   Available sessions:")
+            for session in allSessions.prefix(5) {
+                print("     - \(session.date) | Day: \(session.day?.name ?? "nil") | Sets: \(session.sets.count)")
+            }
             return
         }
+        
+        print("   ✅ Found today's session with \(todaySession.sets.count) sets")
         
         // Build workout data from the session
         var exercises: [ExerciseLogData] = []
@@ -360,10 +374,22 @@ struct WorkoutDayDetailView: View {
             set.exercise?.persistentModelID
         }
         
+        print("   📊 Grouped sets by exercise:")
+        for (exerciseID, sets) in groupedSets {
+            if let exerciseID = exerciseID,
+               let firstSet = sets.first,
+               let exercise = firstSet.exercise {
+                print("     - \(exercise.name): \(sets.count) sets")
+            } else {
+                print("     - Unknown exercise: \(sets.count) sets")
+            }
+        }
+        
         for (exerciseID, sets) in groupedSets {
             guard let exerciseID = exerciseID,
                   let firstSet = sets.first,
                   let exercise = firstSet.exercise else {
+                print("   ⚠️ Skipping set with missing exercise data")
                 continue
             }
             
@@ -372,6 +398,11 @@ struct WorkoutDayDetailView: View {
             }
             
             exercises.append(ExerciseLogData(name: exercise.name, sets: setData))
+        }
+        
+        print("   📊 Final exercises to log: \(exercises.count)")
+        for exercise in exercises {
+            print("     - \(exercise.name): \(exercise.sets.count) sets")
         }
         
         let workoutData = WorkoutLogData(
