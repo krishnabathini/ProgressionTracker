@@ -50,20 +50,34 @@ class ProgressionCalculator {
             exerciseType: exercise.exerciseType
         )
         
-        // Only recommend increase if it's meaningful (at least 2.5 lbs)
-        let minIncrease: Double = 2.5
-        return nextWeight > currentWeight + minIncrease
+        // Ensure meaningful increase (next weight must be greater than current)
+        // For low weights, this is guaranteed by flat increment
+        // For higher weights, percentage-based ensures meaningful increase
+        return nextWeight > currentWeight
     }
 
     /// Calculates the recommended next weight for an exercise.
+    /// Uses flat increment for low weights to ensure meaningful increases.
     /// - Parameters:
     ///   - currentWeight: The current working weight.
     ///   - exerciseType: The exercise type (upper vs lower body) to determine increment.
     /// - Returns: The next weight rounded to the nearest 2.5 lbs.
     func calculateNextWeight(currentWeight: Double, exerciseType: ExerciseType) -> Double {
-        let multiplier: Double = (exerciseType == .upperBody) ? 1.025 : 1.05
-        let increased = currentWeight * multiplier
+        // Base increment for low weights
+        let baseIncrement: Double = 2.5  // Minimum increment
+        let percentageMultiplier: Double = (exerciseType == .upperBody) ? 1.025 : 1.05
+        
+        // For weights under 25, use flat increment to ensure meaningful increases
+        if currentWeight < 25.0 {
+            // Always increase by at least the base increment
+            let increasedWeight = currentWeight + baseIncrement
+            return increasedWeight
+        }
+        
+        // Existing percentage-based progression for higher weights
+        let increased = currentWeight * percentageMultiplier
         let rounded = (increased / 2.5).rounded() * 2.5
+        
         return rounded
     }
 
@@ -108,10 +122,10 @@ class ProgressionCalculator {
                 exerciseType: exercise.exerciseType
             )
             
-            // Meaningful weight increase check
-            // Ensures progression is significant enough to warrant change
-            let minIncrease: Double = 2.5  // Minimum meaningful increase
-            if nextWeight > currentWeight + minIncrease {
+            // Ensure meaningful increase
+            // For low weights (< 25 lbs), flat increment guarantees meaningful increase
+            // For higher weights, percentage-based ensures meaningful increase
+            if nextWeight > currentWeight {
                 return "Great job! Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
             }
         }

@@ -258,7 +258,7 @@ struct WorkoutDayDetailView: View {
     
     private func completeWorkoutButtonText() -> String {
         if gitHubAuth.isAuthenticated {
-            return allExercisesComplete() ? "commit gains ✓" : "commit gains"
+            return allExercisesComplete() ? "commit workout ✓" : "commit workout"
         } else {
             return allExercisesComplete() ? "Workout Complete! ✓" : "Complete Workout"
         }

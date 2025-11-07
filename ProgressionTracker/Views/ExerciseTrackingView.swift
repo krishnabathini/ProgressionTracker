@@ -27,18 +27,12 @@ struct ExerciseTrackingView: View {
     // Weight input state variables
     @State private var showWeightInput = false
     @State private var weightInputText = ""
+    @State private var showEditWeightInput = false
+    @State private var editWeightInputText = ""
     
     // Edit state variables
     @State private var editingSet: ExerciseSet?
     
-    // Computed property for List height
-    private var setListHeight: CGFloat {
-        if editingSet != nil {
-            return CGFloat((completedSets.count - 1) * 44 + 140)
-        } else {
-            return CGFloat(completedSets.count * 44) + 12
-        }
-    }
     
     // MARK: - Validation
     
@@ -336,7 +330,172 @@ struct ExerciseTrackingView: View {
     }
     
     private func loadPreviousMetrics() {
-        previousMetrics = getPreviousWorkoutMetrics()
+        // Use the enhanced volume metrics calculation with set matching
+        updateVolumeMetrics()
+    }
+    
+    // MARK: - Volume Metrics Calculation
+    
+    /// Fetches previous workout sessions for this exercise
+    private func fetchPreviousSessions(for exercise: Exercise) -> [WorkoutSession] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        // OPTIMIZATION: Only look at last 30 days for previous workout
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            return []
+        }
+        
+        // Filter to last 30 days only
+        let recentSessions = allSessions.filter { $0.date >= thirtyDaysAgo }
+        
+        // Find the most recent session before today with this exercise
+        for session in recentSessions {
+            let sessionDate = calendar.startOfDay(for: session.date)
+            
+            // Skip today's sessions
+            if calendar.isDate(sessionDate, inSameDayAs: today) {
+                continue
+            }
+            
+            // Check if this session has sets for this exercise
+            let exerciseSets = session.sets.filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+            }
+            
+            if !exerciseSets.isEmpty {
+                return [session]
+            }
+        }
+        
+        return []
+    }
+    
+    /// Gets previous sets from previous workout sessions, sorted by set number
+    private func getPreviousSets(from sessions: [WorkoutSession]) -> [ExerciseSet] {
+        guard let previousSession = sessions.first else {
+            return []
+        }
+        
+        let previousSets = previousSession.sets.filter { set in
+            guard let setExercise = set.exercise else { return false }
+            return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+        }
+        
+        // Sort by set number to ensure proper matching
+        return previousSets.sorted { $0.setNumber < $1.setNumber }
+    }
+    
+    /// Gets current workout sets sorted by set number
+    private func getCurrentWorkoutSets() -> [ExerciseSet] {
+        return completedSets.sorted { $0.setNumber < $1.setNumber }
+    }
+    
+    /// Calculates volume metrics by comparing only matching set numbers
+    /// This ensures accurate progression tracking as sets are added dynamically
+    func calculateVolumeMetrics(
+        currentSets: [ExerciseSet],
+        previousSets: [ExerciseSet]
+    ) -> (volume: Double, volumeDifference: Double) {
+        // Determine the number of sets to compare
+        let comparisonSetCount = currentSets.count
+        
+        // If no current sets, return zero volume
+        guard comparisonSetCount > 0 else {
+            return (volume: 0.0, volumeDifference: 0.0)
+        }
+        
+        // Calculate current workout volume for current sets
+        let currentVolume = currentSets.reduce(0.0) {
+            $0 + ($1.weight * Double($1.reps))
+        }
+        
+        // Calculate previous workout volume for matching number of sets
+        let previousVolume = previousSets.prefix(comparisonSetCount).reduce(0.0) {
+            $0 + ($1.weight * Double($1.reps))
+        }
+        
+        // Calculate volume difference
+        let volumeDifference = currentVolume - previousVolume
+        
+        return (
+            volume: currentVolume,
+            volumeDifference: volumeDifference
+        )
+    }
+    
+    /// Calculates normalized bar widths for volume display
+    /// Prevents UI overflow while maintaining proportional representation
+    /// - Parameters:
+    ///   - currentVolume: The current workout volume
+    ///   - previousVolume: The previous workout volume for comparison
+    ///   - maxWidth: Maximum available width for the bar (from GeometryReader)
+    ///   - padding: Additional padding to prevent edge overflow (default: 0)
+    /// - Returns: Tuple containing normalized current and previous bar widths
+    private func calculateBarWidths(
+        currentVolume: Double,
+        previousVolume: Double,
+        maxWidth: CGFloat,
+        padding: CGFloat = 0
+    ) -> (currentWidth: CGFloat, previousWidth: CGFloat) {
+        // Prevent division by zero
+        guard maxWidth > 0 else {
+            return (currentWidth: 0, previousWidth: 0)
+        }
+        
+        // Find the maximum volume to use as reference
+        let maxVolume = max(currentVolume, previousVolume)
+        
+        // If no volume, return zero widths
+        guard maxVolume > 0 else {
+            return (currentWidth: 0, previousWidth: 0)
+        }
+        
+        // Calculate available width (accounting for padding)
+        let availableWidth = max(maxWidth - padding, 0)
+        
+        // Scale volumes proportionally to available width
+        let scaledCurrentWidth = (currentVolume / maxVolume) * availableWidth
+        let scaledPreviousWidth = (previousVolume / maxVolume) * availableWidth
+        
+        // Ensure widths don't exceed available space and have minimum visibility
+        let minWidth: CGFloat = 2.0 // Minimum width for visibility
+        let currentWidth = min(max(scaledCurrentWidth, minWidth), availableWidth)
+        let previousWidth = min(max(scaledPreviousWidth, minWidth), availableWidth)
+        
+        return (
+            currentWidth: currentWidth,
+            previousWidth: previousWidth
+        )
+    }
+    
+    /// Updates volume metrics using the enhanced set-matching calculation
+    private func updateVolumeMetrics() {
+        // Fetch previous workout sessions for this exercise
+        let previousSessions = fetchPreviousSessions(for: exercise)
+        
+        // Get sets from previous workouts (sorted by set number)
+        let previousSets = getPreviousSets(from: previousSessions)
+        
+        // Update previousMetrics with the matched volume comparison
+        if !previousSets.isEmpty {
+            // Calculate full previous metrics for display
+            let previousVolume = previousSets.reduce(0.0) { $0 + ($1.weight * Double($1.reps)) }
+            let previousAvgReps = Double(previousSets.reduce(0) { $0 + $1.reps }) / Double(previousSets.count)
+            let previousTotalReps = previousSets.reduce(0) { $0 + $1.reps }
+            let previousLbsPerRep = previousTotalReps > 0 ? previousVolume / Double(previousTotalReps) : 0
+            
+            previousMetrics = (previousVolume, previousAvgReps, previousLbsPerRep)
+        } else {
+            previousMetrics = nil
+        }
     }
     
     private func fetchAllWorkoutHistory() -> [(date: Date, sets: [ExerciseSet])] {
@@ -395,6 +554,33 @@ struct ExerciseTrackingView: View {
                 loadWorkoutHistory()
                 loadPreviousMetrics()
             }
+        }
+    }
+    
+    // MARK: - Bottom Editing Card
+    
+    @ViewBuilder
+    private var bottomEditingCard: some View {
+        if let editingSet = editingSet {
+            SetEditingCard(
+                set: editingSet,
+                exerciseName: exercise.name,
+                onUpdate: {
+                    try? modelContext.save()
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.editingSet = nil
+                    }
+                },
+                onDismiss: {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.editingSet = nil
+                    }
+                }
+            )
+            .transition(.asymmetric(
+                insertion: .move(edge: .bottom).combined(with: .opacity),
+                removal: .move(edge: .bottom).combined(with: .opacity)
+            ))
         }
     }
     
@@ -457,6 +643,15 @@ struct ExerciseTrackingView: View {
                             let current = getCurrentWorkoutMetrics()
                             let previous = previousMetrics
                             
+                            // Calculate matched volume metrics for accurate comparison
+                            let previousSessions = fetchPreviousSessions(for: exercise)
+                            let currentSets = getCurrentWorkoutSets()
+                            let previousSets = getPreviousSets(from: previousSessions)
+                            let matchedMetrics = calculateVolumeMetrics(
+                                currentSets: currentSets,
+                                previousSets: previousSets
+                            )
+                            
                             VStack(spacing: 16) {
                                 // Volume
                                 HStack {
@@ -470,29 +665,79 @@ struct ExerciseTrackingView: View {
                                         .font(.system(.title3, design: .default, weight: .bold))
                                         .foregroundStyle(.white)
                                     
-                                    if let prev = previous {
-                                        let diff = current.volume - prev.volume
-                                        HStack(spacing: 4) {
-                                            Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
-                                                .font(.system(size: 12, weight: .bold))
-                                            Text("\(Int(abs(diff)))lbs")
-                                                .font(.system(.caption, design: .default, weight: .semibold))
+                                    // Show matched volume difference (only comparing sets with matching set numbers)
+                                    if !previousSets.isEmpty {
+                                        // Always use matched volume difference when previous sets exist
+                                        // This compares only the matching number of sets
+                                        if abs(matchedMetrics.volumeDifference) > 0.5 {
+                                            // Only show if difference is meaningful (more than 0.5 lbs)
+                                            HStack(spacing: 4) {
+                                                Image(systemName: matchedMetrics.volumeDifference > 0 ? "arrow.up" : "arrow.down")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                Text("\(Int(abs(matchedMetrics.volumeDifference)))lbs")
+                                                    .font(.system(.caption, design: .default, weight: .semibold))
+                                            }
+                                            .foregroundStyle(matchedMetrics.volumeDifference > 0 ? .green : .red)
                                         }
-                                        .foregroundStyle(diff > 0 ? .green : .red)
+                                    } else if let prev = previous {
+                                        // Fallback to total volume comparison if no previous matched sets
+                                        let diff = current.volume - prev.volume
+                                        if abs(diff) > 0.5 {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                Text("\(Int(abs(diff)))lbs")
+                                                    .font(.system(.caption, design: .default, weight: .semibold))
+                                            }
+                                            .foregroundStyle(diff > 0 ? .green : .red)
+                                        }
                                     }
                                 }
                                 
                                 GeometryReader { geometry in
                                     ZStack(alignment: .leading) {
+                                        // Background bar
                                         Rectangle()
                                             .fill(Color(white: 0.2))
                                             .frame(height: 8)
                                         
-                                        if let prev = previous, prev.volume > 0 {
-                                            let progress = min(max(current.volume / prev.volume, 0.1), 1.5)
+                                        if !previousSets.isEmpty && matchedMetrics.volume > 0 {
+                                            // Use matched volume for comparison with normalized scaling
+                                            let comparisonSetCount = currentSets.count
+                                            let matchedPreviousVolume = previousSets.prefix(comparisonSetCount)
+                                                .reduce(0.0) { $0 + ($1.weight * Double($1.reps)) }
+                                            
+                                            if matchedPreviousVolume > 0 {
+                                                // Calculate normalized bar widths to prevent overflow
+                                                let barWidths = calculateBarWidths(
+                                                    currentVolume: matchedMetrics.volume,
+                                                    previousVolume: matchedPreviousVolume,
+                                                    maxWidth: geometry.size.width,
+                                                    padding: 0
+                                                )
+                                                
+                                                // Display current volume bar with normalized width
+                                                Rectangle()
+                                                    .fill(matchedMetrics.volume >= matchedPreviousVolume ? Color.green : Color.red)
+                                                    .frame(width: barWidths.currentWidth, height: 8)
+                                            } else {
+                                                // No previous volume - show current as full bar
+                                                Rectangle()
+                                                    .fill(Color.green)
+                                                    .frame(width: geometry.size.width, height: 8)
+                                            }
+                                        } else if let prev = previous, prev.volume > 0 {
+                                            // Fallback to total volume comparison with normalized scaling
+                                            let barWidths = calculateBarWidths(
+                                                currentVolume: current.volume,
+                                                previousVolume: prev.volume,
+                                                maxWidth: geometry.size.width,
+                                                padding: 0
+                                            )
+                                            
                                             Rectangle()
                                                 .fill(current.volume >= prev.volume ? Color.green : Color.red)
-                                                .frame(width: geometry.size.width * progress, height: 8)
+                                                .frame(width: barWidths.currentWidth, height: 8)
                                         } else {
                                             // No previous workout - show current as full bar in green
                                             Rectangle()
@@ -637,102 +882,43 @@ struct ExerciseTrackingView: View {
                                         ForEach(group.sets) { set in
                                             let isToday = Calendar.current.isDateInToday(group.date)
                                             
-                                            if isToday && editingSet?.persistentModelID == set.persistentModelID {
-                                                // EDIT MODE (only for today's sets)
-                                                VStack(spacing: 12) {
-                                                    HStack {
-                                                        Text("SET \(set.setNumber)")
-                                                            .font(.system(.subheadline, weight: .semibold))
-                                                            .foregroundStyle(.blue)
-                                                        Spacer()
-                                                        Button("Done") {
-                                                            try? modelContext.save()
-                                                            editingSet = nil
-                                                        }
-                                                        .foregroundStyle(.blue)
-                                                    }
+                                            // NORMAL MODE (read-only for past dates, editable for today)
+                                            VStack(spacing: 0) {
+                                                HStack {
+                                                    Text("SET \(set.setNumber)")
+                                                        .font(.system(.subheadline, design: .default, weight: .semibold))
+                                                        .foregroundStyle(.white)
                                                     
-                                                    // Reps stepper
-                                                    HStack {
-                                                        Text("REPS").font(.caption).foregroundStyle(Color(white: 0.6))
-                                                        Spacer()
-                                                        HStack(spacing: 8) {
-                                                            Button { if set.reps > 1 { set.reps -= 1 } } label: {
-                                                                Image(systemName: "minus.circle.fill")
-                                                                    .font(.title2)
-                                                                    .foregroundStyle(Color(white: 0.5))
-                                                            }
-                                                            Text("\(set.reps)")
-                                                                .font(.system(.title3, weight: .semibold))
-                                                                .frame(width: 40)
-                                                            Button { if set.reps < 50 { set.reps += 1 } } label: {
-                                                                Image(systemName: "plus.circle.fill")
-                                                                    .font(.title2)
-                                                                    .foregroundStyle(.blue)
-                                                            }
-                                                        }
-                                                    }
+                                                    Spacer()
                                                     
-                                                    // Weight stepper
-                                                    HStack {
-                                                        Text("WEIGHT").font(.caption).foregroundStyle(Color(white: 0.6))
-                                                        Spacer()
-                                                        HStack(spacing: 8) {
-                                                            Button { if set.weight >= 2.5 { set.weight -= 2.5 } } label: {
-                                                                Image(systemName: "minus.circle.fill")
-                                                                    .font(.title2)
-                                                                    .foregroundStyle(Color(white: 0.5))
-                                                            }
-                                                            Text(String(format: "%.1f", set.weight))
-                                                                .font(.system(.title3, weight: .semibold))
-                                                                .frame(width: 60)
-                                                            Button { if set.weight < 1000 { set.weight += 2.5 } } label: {
-                                                                Image(systemName: "plus.circle.fill")
-                                                                    .font(.title2)
-                                                                    .foregroundStyle(.blue)
-                                                            }
-                                                        }
-                                                    }
+                                                    Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
+                                                        .font(.system(.subheadline, design: .default))
+                                                        .foregroundStyle(Color(white: 0.7))
                                                 }
-                                                .listRowBackground(Color(hex: "2C2C2E"))
-                                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                                            } else {
-                                                // NORMAL MODE (read-only for past dates, editable for today)
-                                                VStack(spacing: 0) {
-                                                    HStack {
-                                                        Text("SET \(set.setNumber)")
-                                                            .font(.system(.subheadline, design: .default, weight: .semibold))
-                    .foregroundStyle(.white)
-                
-                Spacer()
-                
-                                                        Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
-                                                            .font(.system(.subheadline, design: .default))
-                                                            .foregroundStyle(Color(white: 0.7))
-                                                    }
-                                                    .contentShape(Rectangle())
-                                                    .onTapGesture {
-                                                        if isToday {
+                                                .contentShape(Rectangle())
+                                                .onTapGesture {
+                                                    if isToday {
+                                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                                             editingSet = set
                                                         }
                                                     }
-                                                    
-                                                    if set.setNumber != group.sets.last?.setNumber {
-                                                        Divider()
-                                                            .background(Color(white: 0.3))
-                                                            .padding(.top, 12)
-                                                    }
                                                 }
-                                                .listRowBackground(Color.clear)
-                                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
-                                                .listRowSeparator(.hidden)
-                                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                                    if isToday {
-                                                        Button(role: .destructive) {
-                                                            deleteSet(set)
-                                                        } label: {
-                                                            Label("Delete", systemImage: "trash")
-                                                        }
+                                                
+                                                if set.setNumber != group.sets.last?.setNumber {
+                                                    Divider()
+                                                        .background(Color(white: 0.3))
+                                                        .padding(.top, 12)
+                                                }
+                                            }
+                                            .listRowBackground(Color.clear)
+                                            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+                                            .listRowSeparator(.hidden)
+                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                                if isToday {
+                                                    Button(role: .destructive) {
+                                                        deleteSet(set)
+                                                    } label: {
+                                                        Label("Delete", systemImage: "trash")
                                                     }
                                                 }
                                             }
@@ -864,6 +1050,10 @@ struct ExerciseTrackingView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .overlay(alignment: .bottom) {
+                bottomEditingCard
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: editingSet?.persistentModelID)
+            }
             .onAppear {
                 // This removes the text from the back button
                 UINavigationBar.appearance().topItem?.backButtonDisplayMode = .minimal
@@ -895,6 +1085,179 @@ struct ExerciseTrackingView: View {
     
     return ExerciseTrackingView(exercise: exercise)
         .modelContainer(container)
+}
+
+// MARK: - Set Editing Card
+
+/// Bottom card for editing exercise sets - appears when user taps a set
+struct SetEditingCard: View {
+    @Bindable var set: ExerciseSet
+    let exerciseName: String
+    let onUpdate: () -> Void
+    let onDismiss: () -> Void
+    
+    @State private var editWeight: Double
+    @State private var editReps: Int
+    @State private var showEditWeightInput = false
+    @State private var editWeightInputText = ""
+    
+    init(set: ExerciseSet, exerciseName: String, onUpdate: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        self.set = set
+        self.exerciseName = exerciseName
+        self.onUpdate = onUpdate
+        self.onDismiss = onDismiss
+        _editWeight = State(initialValue: set.weight)
+        _editReps = State(initialValue: set.reps)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Exercise name header
+            Text(exerciseName)
+                .font(.system(.headline, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+            
+            VStack(spacing: 16) {
+                // REPS section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("REPS")
+                        .font(.system(.caption, design: .default, weight: .semibold))
+                        .foregroundStyle(Color(white: 0.6))
+                    
+                    HStack(spacing: 12) {
+                        Button {
+                            if editReps > 1 { editReps -= 1 }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.white)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("\(editReps)")
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 60)
+                        
+                        Spacer()
+                        
+                        Button {
+                            if editReps < 50 { editReps += 1 }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                
+                // WEIGHT section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("WEIGHT")
+                        .font(.system(.caption, design: .default, weight: .semibold))
+                        .foregroundStyle(Color(white: 0.6))
+                    
+                    HStack(spacing: 12) {
+                        Button {
+                            if editWeight >= 2.5 {
+                                editWeight -= 2.5
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.white)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(String(format: "%.1f", editWeight))
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 80)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                editWeightInputText = ""
+                                showEditWeightInput = true
+                            }
+                        
+                        Spacer()
+                        
+                        Button {
+                            if editWeight < 1000 {
+                                editWeight += 2.5
+                            }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .alert("Enter Weight", isPresented: $showEditWeightInput) {
+                    TextField("Weight", text: $editWeightInputText)
+                        .keyboardType(.decimalPad)
+                    Button("Cancel", role: .cancel) {
+                        editWeightInputText = ""
+                    }
+                    Button("Set") {
+                        if let weight = Double(editWeightInputText.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                            editWeight = max(0, min(weight, 1000))
+                        }
+                        editWeightInputText = ""
+                    }
+                }
+                
+                // Update button
+                Button {
+                    set.weight = editWeight
+                    set.reps = editReps
+                    onUpdate()
+                } label: {
+                    Text("Update")
+                        .font(.system(.body, design: .default, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+            }
+            .padding(.bottom, 20)
+        }
+        .background(Color(hex: "1C1C1E"))
+        .cornerRadius(20, corners: [.topLeft, .topRight])
+        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: -5)
+    }
+}
+
+// Extension for corner radius on specific corners
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
+    }
 }
 
 // MARK: - Color Extension for Hex Support
