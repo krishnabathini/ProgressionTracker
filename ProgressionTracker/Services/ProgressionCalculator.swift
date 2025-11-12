@@ -82,49 +82,66 @@ class ProgressionCalculator {
     }
 
     /// Returns a user-friendly recommendation message for the next session.
-    /// Enhanced with meaningful weight increases and robust filtering.
+    /// Enhanced with meaningful weight increases, robust filtering, and initial guidance.
     /// - Parameters:
     ///   - exercise: The exercise being performed.
     ///   - currentWeight: The current working weight.
     ///   - sessions: All available sessions from the caller (e.g., `@Query`).
     func getRecommendation(for exercise: Exercise, currentWeight: Double, sessions: [WorkoutSession]) -> String {
-        // Robust session filtering for specific exercise
+        // Filter sessions that actually include this exercise
         let exerciseSessions = sessions.filter { session in
             session.sets.contains { $0.exercise == exercise }
         }
         
-        // Safeguard against empty session history
-        guard let mostRecentSession = exerciseSessions.sorted(by: { $0.date > $1.date }).first else {
-            return "Start with \(String(format: "%.1f", currentWeight)) lbs for \(exercise.targetReps) reps"
+        // If there is no prior history, provide an initial recommendation
+        guard !exerciseSessions.isEmpty else {
+            let startingWeight = suggestInitialWeight(for: exercise)
+            return "Start with \(String(format: "%.1f", startingWeight)) lbs × \(exercise.targetReps) reps"
         }
         
-        // Filter sets for this specific exercise
-        let exerciseSets = mostRecentSession.sets.filter { $0.exercise == exercise }
+        // Sort recent sessions (most recent first) and gather sets from up to the last 3 sessions
+        let sortedSessions = exerciseSessions.sorted { $0.date > $1.date }
         
-        // Ensure sufficient set history
-        guard exerciseSets.count >= 3 else {
+        var collectedSets: [ExerciseSet] = []
+        var processedSessions = 0
+        
+        for session in sortedSessions {
+            let sessionSets = session.sets
+                .filter { $0.exercise == exercise }
+                .sorted { $0.setNumber < $1.setNumber }
+            
+            guard !sessionSets.isEmpty else { continue }
+            
+            collectedSets.append(contentsOf: sessionSets)
+            processedSessions += 1
+            
+            if processedSessions >= 3 {
+                break
+            }
+        }
+        
+        // Ensure we have enough history to evaluate progression
+        guard !collectedSets.isEmpty else {
             return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
         }
         
-        // Analyze most recent 3 sets
-        let lastThreeSets = Array(exerciseSets.suffix(3))
+        // Apply existing progression criteria:
+        // - Only consider sets performed at the current working weight
+        // - Require at least 3 such sets meeting or exceeding target reps
+        let qualifyingSets = collectedSets.filter { $0.weight == currentWeight }
         
-        // Comprehensive performance criteria
-        let allSetsMetTarget = lastThreeSets.allSatisfy { 
-            $0.reps >= exercise.targetReps && 
-            $0.weight == currentWeight 
+        guard qualifyingSets.count >= 3 else {
+            return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
         }
         
-        // Calculate potential progression
+        let allSetsMetTarget = qualifyingSets.allSatisfy { $0.reps >= exercise.targetReps }
+        
         if allSetsMetTarget {
             let nextWeight = calculateNextWeight(
-                currentWeight: currentWeight, 
+                currentWeight: currentWeight,
                 exerciseType: exercise.exerciseType
             )
             
-            // Ensure meaningful increase
-            // For low weights (< 25 lbs), flat increment guarantees meaningful increase
-            // For higher weights, percentage-based ensures meaningful increase
             if nextWeight > currentWeight {
                 return "Great job! Try \(String(format: "%.1f", nextWeight)) lbs × \(exercise.targetReps) reps"
             }
@@ -132,6 +149,28 @@ class ProgressionCalculator {
         
         // Default to maintenance recommendation
         return "Maintain \(String(format: "%.1f", currentWeight)) lbs - aim for \(exercise.targetReps) reps"
+    }
+
+    /// Suggests a reasonable initial weight when no prior history exists for the exercise.
+    private func suggestInitialWeight(for exercise: Exercise) -> Double {
+        switch exercise.exerciseType {
+        case .upperBody:
+            if exercise.name.lowercased().contains("bench") {
+                return 45.0
+            } else if exercise.name.lowercased().contains("press") {
+                return 35.0
+            } else {
+                return 12.5
+            }
+        case .lowerBody:
+            if exercise.name.lowercased().contains("squat") {
+                return 95.0
+            } else if exercise.name.lowercased().contains("deadlift") {
+                return 115.0
+            } else {
+                return 65.0
+            }
+        }
     }
 
     /// Determines progression status based on the last three sessions for the exercise.

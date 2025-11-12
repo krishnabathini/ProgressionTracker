@@ -91,36 +91,80 @@ extension WorkoutProgram {
     /// A streak continues if workouts are within 2 days of each other
     /// A gap of 3 or more days breaks the streak
     var currentStreak: Int {
+        print("🔍 Streak Calculation Diagnostic")
+        
         let calendar = Calendar.current
         let sessions = self.sessions.sorted { $0.date < $1.date }
         
-        guard !sessions.isEmpty else { return 0 }
+        // Log total number of sessions
+        print("Total Sessions: \(sessions.count)")
+        
+        guard !sessions.isEmpty else {
+            print("❌ No sessions found - returning streak 0")
+            return 0
+        }
         
         // Get unique workout dates (start of day)
         let uniqueWorkoutDates = Set(sessions.map { calendar.startOfDay(for: $0.date) })
         
-        // Sort unique dates
+        // Log all unique workout dates
+        print("Unique Workout Dates:")
         let sortedDates = uniqueWorkoutDates.sorted()
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
         
-        guard !sortedDates.isEmpty else { return 0 }
+        sortedDates.forEach { date in
+            print("  - \(formatter.string(from: date))")
+        }
         
+        guard !sortedDates.isEmpty else {
+            print("❌ No workout dates found - returning streak 0")
+            return 0
+        }
+        
+        // Log last workout date and today
+        let lastWorkoutDate = sortedDates.last!
+        let today = calendar.startOfDay(for: Date())
+        let daysSinceLastWorkout = calendar.dateComponents([.day], from: lastWorkoutDate, to: today).day ?? 0
+        
+        print("Last Workout Date: \(formatter.string(from: lastWorkoutDate))")
+        print("Today's Date: \(formatter.string(from: today))")
+        print("Days Since Last Workout: \(daysSinceLastWorkout)")
+        
+        // Check if streak is still active (hasn't expired)
+        // A gap of 3 or more days breaks the streak
+        if daysSinceLastWorkout >= 3 {
+            print("❌ Streak expired - gap of \(daysSinceLastWorkout) days since last workout")
+            return 0
+        }
+        
+        // Calculate streak by iterating backwards from most recent workout
         var streak = 1
-        var lastWorkoutDate = sortedDates.last!
+        var lastDate = lastWorkoutDate
+        
+        print("\n📊 Calculating streak backwards from most recent workout:")
         
         // Iterate backwards through dates
         for date in sortedDates.reversed().dropFirst() {
-            let daysBetween = calendar.dateComponents([.day], from: date, to: lastWorkoutDate).day ?? 0
+            let daysBetween = calendar.dateComponents([.day], from: date, to: lastDate).day ?? 0
+            
+            print("  Checking date: \(formatter.string(from: date))")
+            print("    Days between workouts: \(daysBetween)")
             
             if daysBetween <= 3 {
-                // If within 2 days, continue streak
+                // If within 3 days (allowing up to 2 day gap), continue streak
                 streak += 1
-                lastWorkoutDate = date
+                lastDate = date
+                print("    ✅ Streak continues: \(streak) days")
             } else {
-                // More than 2 days gap breaks streak
+                // More than 3 days gap breaks streak
+                print("    ❌ Streak breaks - gap of \(daysBetween) days")
                 break
             }
         }
         
+        print("🏆 Final Streak: \(streak) days")
         return streak
     }
     
@@ -178,6 +222,14 @@ extension WorkoutProgram {
         }
         
         return nil
+    }
+    
+    /// Requests notification permissions and schedules reminders to preserve the current streak.
+    func updateStreakNotifications() {
+        StreakNotificationManager.shared.requestNotificationPermissions()
+        
+        let lastWorkoutDate = sessions.sorted { $0.date < $1.date }.last?.date
+        StreakNotificationManager.shared.scheduleStreakNotifications(for: currentStreak, lastWorkoutDate: lastWorkoutDate)
     }
 }
 

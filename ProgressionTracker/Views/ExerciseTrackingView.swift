@@ -334,6 +334,152 @@ struct ExerciseTrackingView: View {
         updateVolumeMetrics()
     }
     
+    // MARK: - Recommendation Diagnostics
+    
+    /// Fetches recent sessions (last 30 days) for diagnostics.
+    private func fetchSessionsForDiagnostics() -> [WorkoutSession] {
+        let calendar = Calendar.current
+        let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        
+        guard let allSessions = try? modelContext.fetch(descriptor) else {
+            print("⚠️ Diagnostics: Unable to fetch sessions from context.")
+            return []
+        }
+        
+        let recentSessions = allSessions.filter { $0.date >= thirtyDaysAgo }
+        print("🗂️ Diagnostics: Found \(recentSessions.count) recent sessions for analysis.")
+        return recentSessions
+    }
+    
+    /// Provides detailed logging while attempting to generate an initial recommendation.
+    private func getInitialRecommendation(for exercise: Exercise, sessions: [WorkoutSession]) -> (weight: Double, reps: Int)? {
+        print("🔍 Generating Initial Recommendation")
+        print("Exercise: \(exercise.name)")
+        print("Exercise Type: \(exercise.exerciseType)")
+        print("Target Reps: \(exercise.targetReps)")
+        
+        let exerciseSessions = sessions.filter { session in
+            let exerciseSets = session.sets.filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+            }
+            print("Session \(session.date): \(exerciseSets.count) sets for exercise.")
+            return !exerciseSets.isEmpty
+        }
+        
+        print("Total Relevant Sessions: \(exerciseSessions.count)")
+        
+        exerciseSessions.forEach { session in
+            print("📅 Session Date: \(session.date)")
+            let exerciseSets = session.sets.filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+            }
+            exerciseSets.forEach { set in
+                print("   • Set \(set.setNumber): \(set.reps) reps @ \(set.weight) lbs")
+            }
+        }
+        
+        // No previous sessions - suggest a sensible starting point.
+        guard !exerciseSessions.isEmpty else {
+            let startingWeight = suggestInitialWeight(for: exercise)
+            print("✅ Initial suggestion (no history): \(startingWeight) lbs")
+            return (weight: startingWeight, reps: exercise.targetReps)
+        }
+        
+        // Use the most recent session to derive next steps
+        let sortedSessions = exerciseSessions.sorted { $0.date > $1.date }
+        
+        guard let mostRecentSession = sortedSessions.first else {
+            print("❗ No previous sets found. Using default recommendation.")
+            let startingWeight = suggestInitialWeight(for: exercise)
+            return (weight: startingWeight, reps: exercise.targetReps)
+        }
+        
+        let exerciseSets = mostRecentSession.sets
+            .filter { set in
+                guard let setExercise = set.exercise else { return false }
+                return setExercise.persistentModelID == exercise.persistentModelID && set.isCompleted
+            }
+            .sorted(by: { $0.setNumber < $1.setNumber })
+        
+        guard exerciseSets.count == 3 else {
+            print("⚠️ Most recent session does not have 3 completed sets. Maintaining current weight.")
+            let fallbackWeight = exerciseSets.last?.weight ?? suggestInitialWeight(for: exercise)
+            return (weight: fallbackWeight, reps: exercise.targetReps)
+        }
+        
+        guard
+            let firstSetWeight = exerciseSets.first?.weight,
+            exerciseSets.allSatisfy({ $0.weight == firstSetWeight && $0.reps >= exercise.targetReps })
+        else {
+            print("ℹ️ Not all sets met target reps or weights are inconsistent. Maintaining current weight.")
+            let fallbackWeight = exerciseSets.last?.weight ?? suggestInitialWeight(for: exercise)
+            return (weight: fallbackWeight, reps: exercise.targetReps)
+        }
+        
+        let currentWeight = firstSetWeight
+        var nextWeight: Double
+        
+        if currentWeight < 25.0 {
+            nextWeight = currentWeight + 2.5
+            print("💡 Low weight increment applied: +2.5 lbs (from \(currentWeight) → \(nextWeight))")
+        } else {
+            let multiplier: Double = (exercise.exerciseType == .upperBody) ? 1.025 : 1.05
+            nextWeight = (currentWeight * multiplier / 2.5).rounded() * 2.5
+            print("💡 Percentage increment applied (multiplier \(multiplier)): \(currentWeight) → \(nextWeight)")
+        }
+        
+        print("🏆 Recommendation: \(nextWeight) lbs × \(exercise.targetReps) reps")
+        return (weight: nextWeight, reps: exercise.targetReps)
+    }
+    
+    /// Loads the diagnostic recommendation banner for initial guidance.
+    private func loadInitialRecommendation() {
+        print("🚀 Loading Initial Recommendation Banner")
+        
+        let previousSessions = fetchSessionsForDiagnostics()
+        print("Total Previous Sessions (All): \(previousSessions.count)")
+        
+        guard let initialRec = getInitialRecommendation(for: exercise, sessions: previousSessions) else {
+            print("❌ No Initial Recommendation Generated - defaulting banner.")
+            if recommendation.isEmpty {
+                recommendation = "Start your workout"
+            }
+            return
+        }
+        
+        print("✅ Initial Recommendation Generated: \(initialRec.weight) lbs × \(initialRec.reps) reps")
+        if recommendation.isEmpty {
+            recommendation = "Try \(String(format: "%.1f", initialRec.weight)) lbs × \(initialRec.reps) reps"
+        }
+    }
+    
+    private func suggestInitialWeight(for exercise: Exercise) -> Double {
+        switch exercise.exerciseType {
+        case .upperBody:
+            if exercise.name.lowercased().contains("bench") {
+                return 45.0
+            } else if exercise.name.lowercased().contains("press") {
+                return 35.0
+            } else {
+                return 12.5
+            }
+        case .lowerBody:
+            if exercise.name.lowercased().contains("squat") {
+                return 95.0
+            } else if exercise.name.lowercased().contains("deadlift") {
+                return 115.0
+            } else {
+                return 65.0
+            }
+        }
+    }
+    
     // MARK: - Volume Metrics Calculation
     
     /// Fetches previous workout sessions for this exercise
@@ -553,6 +699,7 @@ struct ExerciseTrackingView: View {
                 findOrCreateSession()
                 loadWorkoutHistory()
                 loadPreviousMetrics()
+                loadInitialRecommendation()
             }
         }
     }
@@ -683,13 +830,13 @@ struct ExerciseTrackingView: View {
                                         // Fallback to total volume comparison if no previous matched sets
                                         let diff = current.volume - prev.volume
                                         if abs(diff) > 0.5 {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
-                                                    .font(.system(size: 12, weight: .bold))
-                                                Text("\(Int(abs(diff)))lbs")
-                                                    .font(.system(.caption, design: .default, weight: .semibold))
-                                            }
-                                            .foregroundStyle(diff > 0 ? .green : .red)
+                                        HStack(spacing: 4) {
+                                            Image(systemName: diff > 0 ? "arrow.up" : "arrow.down")
+                                                .font(.system(size: 12, weight: .bold))
+                                            Text("\(Int(abs(diff)))lbs")
+                                                .font(.system(.caption, design: .default, weight: .semibold))
+                                        }
+                                        .foregroundStyle(diff > 0 ? .green : .red)
                                         }
                                     }
                                 }
@@ -882,43 +1029,43 @@ struct ExerciseTrackingView: View {
                                         ForEach(group.sets) { set in
                                             let isToday = Calendar.current.isDateInToday(group.date)
                                             
-                                            // NORMAL MODE (read-only for past dates, editable for today)
-                                            VStack(spacing: 0) {
-                                                HStack {
-                                                    Text("SET \(set.setNumber)")
-                                                        .font(.system(.subheadline, design: .default, weight: .semibold))
-                                                        .foregroundStyle(.white)
-                                                    
-                                                    Spacer()
-                                                    
-                                                    Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
-                                                        .font(.system(.subheadline, design: .default))
-                                                        .foregroundStyle(Color(white: 0.7))
-                                                }
-                                                .contentShape(Rectangle())
-                                                .onTapGesture {
-                                                    if isToday {
+                                                // NORMAL MODE (read-only for past dates, editable for today)
+                                                VStack(spacing: 0) {
+                                                    HStack {
+                                                        Text("SET \(set.setNumber)")
+                                                            .font(.system(.subheadline, design: .default, weight: .semibold))
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
+                                                        Text("\(set.reps) reps × \(String(format: "%.1f", set.weight)) lbs")
+                                                            .font(.system(.subheadline, design: .default))
+                                                            .foregroundStyle(Color(white: 0.7))
+                                                    }
+                                                    .contentShape(Rectangle())
+                                                    .onTapGesture {
+                                                        if isToday {
                                                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                                             editingSet = set
                                                         }
+                                                        }
+                                                    }
+                                                    
+                                                    if set.setNumber != group.sets.last?.setNumber {
+                                                        Divider()
+                                                            .background(Color(white: 0.3))
+                                                            .padding(.top, 12)
                                                     }
                                                 }
-                                                
-                                                if set.setNumber != group.sets.last?.setNumber {
-                                                    Divider()
-                                                        .background(Color(white: 0.3))
-                                                        .padding(.top, 12)
-                                                }
-                                            }
-                                            .listRowBackground(Color.clear)
-                                            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
-                                            .listRowSeparator(.hidden)
-                                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                                if isToday {
-                                                    Button(role: .destructive) {
-                                                        deleteSet(set)
-                                                    } label: {
-                                                        Label("Delete", systemImage: "trash")
+                                                .listRowBackground(Color.clear)
+                                                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16))
+                                                .listRowSeparator(.hidden)
+                                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                                    if isToday {
+                                                        Button(role: .destructive) {
+                                                            deleteSet(set)
+                                                        } label: {
+                                                            Label("Delete", systemImage: "trash")
                                                     }
                                                 }
                                             }
