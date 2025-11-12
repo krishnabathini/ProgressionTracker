@@ -7,11 +7,23 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseCore
+
+// Firebase Configuration AppDelegate
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        FirebaseApp.configure()
+        return true
+    }
+}
 
 /// Main app entry point for GitLifting
 /// Sets up SwiftData model container and initializes the exercise library
 @main
 struct GitLiftingApp: App {
+    // Firebase Delegate Registration
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
     init() {
         // Run SwiftData model diagnostics (debug builds only)

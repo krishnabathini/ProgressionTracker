@@ -7,24 +7,55 @@ struct ProfileView: View {
     @State private var showWorkoutHistory = false
     @State private var showGitHubAuth = false
     @State private var showGitHubSettings = false
+    @State private var showBugReportSheet = false
     @ObservedObject private var authService = GitHubAuthService.shared
     @ObservedObject private var gitHubSettings = GitHubSettingsService.shared
     
+    // MARK: - Custom Navigation Header
+    
+    /// Custom navigation header with Profile on the left and Report Bug button on the right
+    private var customNavigationHeader: some View {
+        HStack {
+            // Left side - Profile text
+            Text("Profile")
+                .font(.system(.title2, design: .default, weight: .bold))
+                .foregroundColor(.white)
+            
+            Spacer()
+            
+            // Right side - Report Bug button
+            Button(action: {
+                showBugReportSheet = true
+            }) {
+                Text("Report Bug")
+                    .font(.system(.headline, design: .default, weight: .semibold))
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "1C1C1E"))
+    }
+    
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // User info section
-                    VStack(spacing: 8) {
-                        Image(systemName: "person.circle.fill")
-                            .font(.system(size: 80))
-                            .foregroundStyle(.blue)
-                        
-                        Text("Workout Stats")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                    }
-                    .padding(.top, 20)
+            VStack(spacing: 0) {
+                // Custom navigation header
+                customNavigationHeader
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // User info section
+                        VStack(spacing: 8) {
+                            Image(systemName: "person.circle.fill")
+                                .font(.system(size: 80))
+                                .foregroundStyle(.blue)
+                            
+                            Text("Workout Stats")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                        }
+                        .padding(.top, 20)
                     
                     // Stats cards
                     HStack(spacing: 12) {
@@ -124,8 +155,9 @@ struct ProfileView: View {
                     Spacer()
                 }
             }
+            }
             .background(Color(hex: "1C1C1E"))
-            .navigationTitle("Profile")
+            .navigationBarHidden(true)
         }
         .onAppear {
             loadWorkoutDates()
@@ -139,6 +171,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showGitHubSettings) {
             GitHubSettingsView()
+        }
+        .sheet(isPresented: $showBugReportSheet) {
+            BugReportView()
         }
     }
     
