@@ -34,6 +34,14 @@ struct GitHubAuthView: View {
                     .padding()
                 }
             }
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [.blue.opacity(0.1), .purple.opacity(0.1)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+            )
             .navigationTitle("GitHub Integration")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -46,6 +54,7 @@ struct GitHubAuthView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
     
     // MARK: - Authenticated Content
