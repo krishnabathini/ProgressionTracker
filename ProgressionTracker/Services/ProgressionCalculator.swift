@@ -57,26 +57,32 @@ class ProgressionCalculator {
     }
 
     /// Calculates the recommended next weight for an exercise.
-    /// Uses flat increment for low weights to ensure meaningful increases.
+    /// Uses flat increment for low-to-medium weights to ensure meaningful increases.
     /// - Parameters:
     ///   - currentWeight: The current working weight.
     ///   - exerciseType: The exercise type (upper vs lower body) to determine increment.
     /// - Returns: The next weight rounded to the nearest 2.5 lbs.
     func calculateNextWeight(currentWeight: Double, exerciseType: ExerciseType) -> Double {
-        // Base increment for low weights
+        // Base increment for low-to-medium weights
         let baseIncrement: Double = 2.5  // Minimum increment
         let percentageMultiplier: Double = (exerciseType == .upperBody) ? 1.025 : 1.05
         
-        // For weights under 25, use flat increment to ensure meaningful increases
-        if currentWeight < 25.0 {
-            // Always increase by at least the base increment
+        // For weights under 50, use flat increment to ensure meaningful increases
+        // This prevents rounding issues where small percentage increases round back to the same weight
+        if currentWeight < 50.0 {
             let increasedWeight = currentWeight + baseIncrement
             return increasedWeight
         }
         
-        // Existing percentage-based progression for higher weights
+        // Percentage-based progression for higher weights (50+ lbs)
         let increased = currentWeight * percentageMultiplier
         let rounded = (increased / 2.5).rounded() * 2.5
+        
+        // Ensure we always get a meaningful increase (at least 2.5 lbs more)
+        // This handles edge cases where percentage might round to same or very close weight
+        if rounded <= currentWeight {
+            return currentWeight + baseIncrement
+        }
         
         return rounded
     }

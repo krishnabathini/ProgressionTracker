@@ -1224,8 +1224,7 @@ struct ExerciseTrackingView: View {
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: WorkoutProgram.self, WorkoutDay.self, Exercise.self, configurations: config)
-    
+    let container = try! ModelContainer(for: WorkoutProgram.self, WorkoutDay.self, Exercise.self, configurations: config)  
     let program = WorkoutProgram(name: "Push Pull Legs")
     let day = WorkoutDay(program: program, name: "Push Day", orderIndex: 0)
     let exercise = Exercise(day: day, name: "Bench Press", targetSets: 3, targetReps: 8, exerciseType: .upperBody)
