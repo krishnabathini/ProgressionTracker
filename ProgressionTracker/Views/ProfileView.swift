@@ -54,6 +54,7 @@ struct ProfileView: View {
                             Text("Workout Stats")
                                 .font(.title2)
                                 .fontWeight(.bold)
+                                .foregroundColor(.white)
                         }
                         .padding(.top, 20)
                     
@@ -74,6 +75,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("GitHub Integration")
                             .font(.headline)
+                            .foregroundColor(.white)
                             .padding(.horizontal, 20)
                         
                         Button {
@@ -146,6 +148,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Workout Activity")
                             .font(.headline)
+                            .foregroundColor(.white)
                             .padding(.horizontal, 20)
                         
                         WorkoutHeatmap(workoutDates: workoutDates)

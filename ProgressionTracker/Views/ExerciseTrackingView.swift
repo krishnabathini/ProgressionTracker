@@ -384,11 +384,10 @@ struct ExerciseTrackingView: View {
             }
         }
         
-        // No previous sessions - suggest a sensible starting point.
+        // No previous sessions - return nil to prompt user to log first workout
         guard !exerciseSessions.isEmpty else {
-            let startingWeight = suggestInitialWeight(for: exercise)
-            print("✅ Initial suggestion (no history): \(startingWeight) lbs")
-            return (weight: startingWeight, reps: exercise.targetReps)
+            print("ℹ️ No previous sessions found. User needs to log first workout.")
+            return nil
         }
         
         // Use the most recent session to derive next steps
@@ -446,9 +445,9 @@ struct ExerciseTrackingView: View {
         print("Total Previous Sessions (All): \(previousSessions.count)")
         
         guard let initialRec = getInitialRecommendation(for: exercise, sessions: previousSessions) else {
-            print("❌ No Initial Recommendation Generated - defaulting banner.")
+            print("ℹ️ No workout history found - prompting user to log first workout.")
             if recommendation.isEmpty {
-                recommendation = "Start your workout"
+                recommendation = "Log your first workout for weight recommendations"
             }
             return
         }
@@ -782,7 +781,11 @@ struct ExerciseTrackingView: View {
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(recommendation.starts(with: "Try") ? Color.green.opacity(0.3) : Color.orange.opacity(0.3))
+                                .background(
+                                    recommendation.starts(with: "Try") ? Color.green.opacity(0.3) :
+                                    recommendation.starts(with: "Log your first") ? Color.blue.opacity(0.3) :
+                                    Color.orange.opacity(0.3)
+                                )
                         }
                         
                         // Metrics (if any sets completed)

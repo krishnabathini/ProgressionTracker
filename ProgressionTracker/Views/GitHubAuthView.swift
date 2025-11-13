@@ -36,6 +36,15 @@ struct GitHubAuthView: View {
             }
             .navigationTitle("GitHub Integration")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Return") {
+                        dismiss()
+                    }
+                    .foregroundColor(.blue)
+                    .fontWeight(.semibold)
+                }
+            }
         }
     }
     
