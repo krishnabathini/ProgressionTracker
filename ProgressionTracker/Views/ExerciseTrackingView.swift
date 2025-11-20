@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 /// Main workout logging screen where users log sets and receive progressive overload recommendations
-/// This is a basic skeleton - functionality will be added piece by piece
 struct ExerciseTrackingView: View {
     @Bindable var exercise: Exercise
     @Environment(\.modelContext) private var modelContext
