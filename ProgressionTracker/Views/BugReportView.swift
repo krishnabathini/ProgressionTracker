@@ -58,9 +58,11 @@ struct BugReportView: View {
                             
                             TextEditor(text: $bugDescription)
                                 .frame(minHeight: 200)
+                                .scrollContentBackground(.hidden)
                                 .padding(12)
                                 .background(Color(hex: "2C2C2E"))
                                 .foregroundColor(.white)
+                                .tint(.blue)
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
@@ -68,6 +70,7 @@ struct BugReportView: View {
                                 )
                                 .padding(.horizontal, 20)
                                 .focused($isTextEditorFocused)
+                                .colorScheme(.dark)
                         }
                         
                         // Tips section

@@ -43,20 +43,20 @@ struct ProfileView: View {
                 // Custom navigation header
                 customNavigationHeader
                 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // User info section
-                        VStack(spacing: 8) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 80))
-                                .foregroundStyle(.blue)
-                            
-                            Text("Workout Stats")
-                                .font(.title2)
-                                .fontWeight(.bold)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // User info section
+                    VStack(spacing: 8) {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 80))
+                            .foregroundStyle(.blue)
+                        
+                        Text("Workout Stats")
+                            .font(.title2)
+                            .fontWeight(.bold)
                                 .foregroundColor(.white)
-                        }
-                        .padding(.top, 20)
+                    }
+                    .padding(.top, 20)
                     
                     // Stats cards
                     HStack(spacing: 12) {
@@ -157,7 +157,7 @@ struct ProfileView: View {
                     
                     Spacer()
                 }
-            }
+                }
             }
             .background(Color(hex: "1C1C1E"))
             .navigationBarHidden(true)

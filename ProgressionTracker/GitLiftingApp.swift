@@ -109,7 +109,7 @@ struct GitLiftingApp: App {
     /// - Parameter url: The callback URL containing the authorization code
     private func handleOAuthCallback(_ url: URL) {
         // Check if this is a GitHub OAuth callback
-        guard url.scheme == "progressiontracker",
+        guard url.scheme == "gitlifting",
               url.host == "oauth" else {
             return
         }
