@@ -206,7 +206,8 @@ struct BugReportView: View {
         ]
         
         // Submit to Firestore
-        db.collection("bug_reports").addDocument(data: bugReport) { error in
+        // Cloud Function will automatically trigger and send Slack notification
+        db.collection("bugReports").addDocument(data: bugReport) { error in
             DispatchQueue.main.async {
                 if let error = error {
                     self.submissionError = error
@@ -214,9 +215,8 @@ struct BugReportView: View {
                     self.showErrorAlert = true
                     self.isSubmitting = false
                 } else {
-                    // Send Slack Notification after successful Firestore save
-                    SlackNotificationService.shared.sendBugReportNotification(description: trimmedDescription)
-                    
+                    // Bug report saved successfully
+                    // Cloud Function will automatically send Slack notification
                     self.isSubmitting = false
                     self.showSuccessAlert = true
                     
