@@ -80,9 +80,8 @@ We may update this Privacy Policy from time to time. Any changes will be reflect
 
 If you have questions about this Privacy Policy or our data practices, please contact us at:
 
-**Email:** [Your Contact Email Here]
+**Email:** kbathini12@gmail.com
 
-**Note:** Please replace "[Your Contact Email Here]" with your actual support email address before App Store submission.
 
 ## Your Rights
 
